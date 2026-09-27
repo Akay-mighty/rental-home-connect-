@@ -26,5 +26,572 @@ Error generating stack: `+o.message+`
 </script>
   <script>(function(){function m(a){var h=a.getAttribute("href");if(!h)return;try{var u=new URL(h,document.baseURI);if((u.protocol==="http:"||u.protocol==="https:")&&u.host!==location.host){a.target="_blank";a.rel="noopener noreferrer";}}catch(e){}}function s(){document.querySelectorAll("a[href]").forEach(m);}if(document.readyState!=="loading"){s();}else{document.addEventListener("DOMContentLoaded",s);}document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a){m(a);}},true);})();</script>
   
+
+<!-- ============ RHC OVERLAY: triple-click logo, live chat widget, city carousels ============ -->
+<script>
+(function() {
+  // ---------- Firebase Config (same as main app, copied verbatim) ----------
+  var fbConfig = {
+    apiKey: "AIzaSyDTYjQ_wG7oaRd_gcMWliirn9z6yV24wtE",
+    authDomain: "rental-home-connect.firebaseapp.com",
+    projectId: "rental-home-connect",
+    storageBucket: "rental-home-connect.firebasestorage.app",
+    messagingSenderId: "753847542083",
+    appId: "1:753847542083:web:9c6d74a9029f6cce6b0ff6"
+  };
+
+  // Use the modular SDK that the main app already loaded (gstatic imports).
+  // We'll lazy-load our own compat instance for the chat widget.
+  var RHC = window.RHC = window.RHC || {};
+  RHC.fb = null;
+  RHC.db = null;
+  RHC.auth = null;
+  RHC.currentChatId = null;
+  RHC.visitorName = localStorage.getItem('rhc_visitor_name') || '';
+  RHC.unsubMsgs = null;
+  RHC.unsubMeta = null;
+  RHC.cloudName = 'dfd1bgdam';
+  RHC.uploadPreset = 'musk_chat_unsigned';
+
+  // Lazy-load Firebase compat for the chat widget (avoids touching the main app's modular SDK)
+  function loadScript(src) {
+    return new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function initFirebase() {
+    try {
+      await loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js');
+      await loadScript('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js');
+      RHC.fb = firebase;
+      RHC.fb.initializeApp(fbConfig);
+      RHC.db = RHC.fb.firestore();
+      RHC.auth = RHC.fb.auth();
+      RHC.auth.setPersistence(RHC.fb.auth.Auth.Persistence.LOCAL).catch(function(){});
+      // Anonymous auth so each visitor gets a uid
+      if (!RHC.auth.currentUser) {
+        try { await RHC.auth.signInAnonymously(); } catch(e) { console.warn('anon auth failed', e); }
+      }
+      // Resume existing chat if any
+      var savedChat = localStorage.getItem('rhc_chat_id');
+      if (savedChat) {
+        RHC.currentChatId = savedChat;
+        listenToChat(RHC.currentChatId);
+      }
+    } catch (e) {
+      console.warn('RHC firebase init failed (chat will be disabled):', e);
+    }
+  }
+
+  // ---------- Triple-click logo listener ----------
+  // React renders the logo dynamically, so we listen at document level for clicks
+  // on elements that look like the brand (containing "Rental Home Connect" text
+  // or near the brand shield).
+  var clickTimes = [];
+  document.addEventListener('click', function(e) {
+    var target = e.target;
+    // Walk up the DOM to find a brand-ish container
+    var el = target;
+    var found = null;
+    while (el && el !== document.body) {
+      var txt = (el.textContent || '').trim();
+      var cls = (el.className || '').toString();
+      // Match brand area: contains "Rental Home Connect" or has brand-related class
+      if (txt.indexOf('Rental Home Connect') === 0 || txt === 'Rental Home Connect' ||
+          (cls.indexOf('brand') >= 0 && txt.length < 50)) {
+        // Make sure it's not the dropdown menu or footer — must be in the header
+        var isInHeader = false;
+        var p = el;
+        while (p && p !== document.body) {
+          var pc = (p.className || '').toString();
+          if (pc.indexOf('sticky') >= 0 || pc.indexOf('header') >= 0 || p.tagName === 'HEADER') {
+            isInHeader = true; break;
+          }
+          p = p.parentElement;
+        }
+        if (isInHeader) { found = el; break; }
+      }
+      el = el.parentElement;
+    }
+    if (!found) return;
+    var now = Date.now();
+    clickTimes.push(now);
+    // Keep only clicks within last 2000ms
+    clickTimes = clickTimes.filter(function(t) { return now - t < 2000; });
+    if (clickTimes.length >= 3) {
+      clickTimes = [];
+      e.preventDefault();
+      e.stopPropagation();
+      window.open('admin.html', '_blank');
+    }
+  }, true);
+
+  // ---------- Cloudinary upload (for visitor image attachments) ----------
+  async function uploadImage(file) {
+    var fd = new FormData();
+    fd.append('file', file, file.name || ('visitor-' + Date.now() + '.jpg'));
+    fd.append('upload_preset', RHC.uploadPreset);
+    fd.append('folder', 'rhc-chat');
+    var res = await fetch('https://api.cloudinary.com/v1_1/' + RHC.cloudName + '/image/upload', {
+      method: 'POST', body: fd
+    });
+    if (!res.ok) throw new Error('Upload failed: ' + res.status);
+    var data = await res.json();
+    if (!data.secure_url) throw new Error('No URL returned');
+    return data.secure_url;
+  }
+
+  function compressImage(file, maxDim) {
+    return new Promise(function(resolve, reject) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w >= h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        c.toBlob(function(b) { b ? resolve(b) : reject(new Error('compress fail')); }, 'image/jpeg', 0.85);
+      };
+      img.onerror = function() { reject(new Error('img load fail')); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  // ---------- Chat widget ----------
+  var widget = null;
+  var chatPanel = null;
+  var chatMessages = null;
+  var chatInput = null;
+  var chatOpen = false;
+
+  function injectChatStyles() {
+    if (document.getElementById('rhc-chat-styles')) return;
+    var st = document.createElement('style');
+    st.id = 'rhc-chat-styles';
+    st.textContent = `
+      .rhc-chat-fab{position:fixed;right:18px;bottom:18px;z-index:9998;width:60px;height:60px;border-radius:50%;
+        background:linear-gradient(135deg,#0A66FF,#1A1A18);color:#fff;font-size:22px;
+        display:flex;align-items:center;justify-content:center;cursor:pointer;
+        box-shadow:0 12px 32px rgba(10,102,255,.45);transition:transform .2s;border:none;}
+      .rhc-chat-fab:hover{transform:scale(1.08);}
+      .rhc-chat-fab .badge{position:absolute;top:-4px;right:-4px;background:#EF4444;color:#fff;font-size:10px;
+        font-weight:700;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center;border:2px solid #FFFCF8;}
+      .rhc-chat-window{position:fixed;right:18px;bottom:90px;z-index:9999;width:min(380px,calc(100vw - 36px));
+        height:min(560px,calc(100vh - 130px));background:#FFFCF8;border-radius:18px;overflow:hidden;
+        display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.25);
+        border:1px solid #E8E2D9;font-family:'Inter',sans-serif;animation:rhcPop .25s ease;}
+      @keyframes rhcPop{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:none}}
+      .rhc-chat-header{background:#0A66FF;color:#fff;padding:14px 18px;display:flex;align-items:center;gap:10px;}
+      .rhc-chat-header .avatar{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.18);
+        display:flex;align-items:center;justify-content:center;font-size:16px;}
+      .rhc-chat-header .title{font-weight:700;font-size:15px;}
+      .rhc-chat-header .sub{font-size:11px;opacity:.85;}
+      .rhc-chat-header .close{margin-left:auto;background:rgba(255,255,255,.18);border:none;color:#fff;
+        width:28px;height:28px;border-radius:8px;cursor:pointer;}
+      .rhc-chat-messages{flex:1;overflow-y:auto;padding:16px;background:#FAFAF8;display:flex;flex-direction:column;gap:8px;}
+      .rhc-msg{max-width:78%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word;}
+      .rhc-msg.visitor{background:#0A66FF;color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
+      .rhc-msg.agent{background:#fff;color:#1A1A18;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid #E8E2D9;}
+      .rhc-msg .ts{font-size:10px;opacity:.7;margin-top:3px;}
+      .rhc-msg img{max-width:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;}
+      .rhc-typing{align-self:flex-start;background:#fff;border:1px solid #E8E2D9;padding:9px 13px;border-radius:14px;
+        color:#64748B;font-size:13px;display:none;}
+      .rhc-typing.show{display:block;}
+      .rhc-typing .dots span{display:inline-block;width:5px;height:5px;background:#64748B;border-radius:50%;
+        margin:0 1px;animation:rhcDot 1.4s infinite;}
+      .rhc-typing .dots span:nth-child(2){animation-delay:.2s;}
+      .rhc-typing .dots span:nth-child(3){animation-delay:.4s;}
+      @keyframes rhcDot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-4px);opacity:1}}
+      .rhc-chat-input{padding:12px;border-top:1px solid #E8E2D9;background:#fff;display:flex;gap:8px;align-items:flex-end;}
+      .rhc-chat-input textarea{flex:1;padding:9px 12px;border-radius:10px;border:1px solid #E8E2D9;font-size:14px;
+        font-family:'Inter',sans-serif;resize:none;min-height:40px;max-height:120px;}
+      .rhc-chat-input textarea:focus{outline:none;border-color:#0A66FF;box-shadow:0 0 0 3px rgba(10,102,255,.12);}
+      .rhc-chat-input .icon-btn{width:38px;height:38px;border-radius:10px;background:#F5F1EB;border:none;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;color:#1A1A18;}
+      .rhc-chat-input .icon-btn:hover{background:#E8E2D9;}
+      .rhc-chat-input .icon-btn.send{background:#0A66FF;color:#fff;}
+      .rhc-chat-input .icon-btn.send:hover{background:#0852CC;}
+      .rhc-chat-input .icon-btn:disabled{opacity:.4;cursor:not-allowed;}
+      .rhc-name-prompt{padding:20px;display:flex;flex-direction:column;gap:10px;}
+      .rhc-name-prompt h3{font-size:16px;color:#1A1A18;margin:0;}
+      .rhc-name-prompt p{font-size:13px;color:#64748B;margin:0;}
+      .rhc-name-prompt input{padding:11px 14px;border-radius:10px;border:1.5px solid #E8E2D9;font-size:14px;}
+      .rhc-name-prompt input:focus{outline:none;border-color:#0A66FF;}
+      .rhc-name-prompt button{padding:11px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;
+        border:none;cursor:pointer;font-size:14px;}
+      .rhc-name-prompt button:hover{background:#0852CC;}
+      @media (max-width:480px){.rhc-chat-window{right:0;left:0;bottom:0;width:100vw;height:100vh;height:100dvh;border-radius:0;}}
+    `;
+    document.head.appendChild(st);
+  }
+
+  function showChatWidget() {
+    if (widget) { chatOpen = true; chatPanel.style.display = 'flex'; return; }
+    injectChatStyles();
+    widget = document.createElement('div');
+    widget.innerHTML = `
+      <button class="rhc-chat-fab" aria-label="Open chat">
+        <i class="fa-solid fa-comment-dots"></i>
+        <span class="badge hidden" id="rhc-unread">0</span>
+      </button>
+      <div class="rhc-chat-window" style="display:none">
+        <div class="rhc-chat-header">
+          <div class="avatar"><i class="fa-solid fa-headset"></i></div>
+          <div>
+            <div class="title">Rental Home Connect</div>
+            <div class="sub"><i class="fa-solid fa-circle" style="font-size:7px;color:#34D399"></i> Online now</div>
+          </div>
+          <button class="close" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="rhc-chat-messages" id="rhc-messages"></div>
+        <div class="rhc-typing" id="rhc-typing">
+          <span class="dots"><span></span><span></span><span></span></span> Agent is typing…
+        </div>
+        <div class="rhc-chat-input">
+          <input type="file" id="rhc-img-input" accept="image/*" style="display:none">
+          <button class="icon-btn" id="rhc-img-btn" title="Attach image"><i class="fa-solid fa-image"></i></button>
+          <textarea id="rhc-input" rows="1" placeholder="Type a message…" 
+            oninput="this.style.height='40px';this.style.height=Math.min(120,this.scrollHeight)+'px'"></textarea>
+          <button class="icon-btn send" id="rhc-send" title="Send"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(widget);
+    chatPanel = widget.querySelector('.rhc-chat-window');
+    chatMessages = widget.querySelector('#rhc-messages');
+    chatInput = widget.querySelector('#rhc-input');
+    var fab = widget.querySelector('.rhc-chat-fab');
+    var closeBtn = widget.querySelector('.close');
+    var sendBtn = widget.querySelector('#rhc-send');
+    var imgBtn = widget.querySelector('#rhc-img-btn');
+    var imgInput = widget.querySelector('#rhc-img-input');
+
+    fab.addEventListener('click', function() {
+      chatOpen = !chatOpen;
+      chatPanel.style.display = chatOpen ? 'flex' : 'none';
+      if (chatOpen) {
+        // Clear unread badge
+        var b = widget.querySelector('#rhc-unread');
+        b.classList.add('hidden'); b.textContent = '0';
+        chatInput.focus();
+        // Scroll to bottom
+        setTimeout(function() { chatMessages.scrollTop = chatMessages.scrollHeight; }, 50);
+      }
+    });
+    closeBtn.addEventListener('click', function() { chatOpen = false; chatPanel.style.display = 'none'; });
+    sendBtn.addEventListener('click', sendVisitorMessage);
+    chatInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendVisitorMessage(); }
+    });
+    chatInput.addEventListener('input', function() {
+      if (!RHC.currentChatId || !RHC.db) return;
+      RHC.db.collection('chats').doc(RHC.currentChatId).set({
+        visitorTyping: true,
+        visitorTypingAt: RHC.fb.firestore.FieldValue.serverTimestamp()
+      }, { merge: true }).catch(function(){});
+    });
+    imgBtn.addEventListener('click', function() { imgInput.click(); });
+    imgInput.addEventListener('change', async function() {
+      var f = imgInput.files && imgInput.files[0];
+      if (!f) return;
+      imgInput.value = '';
+      if (!RHC.db) { alert('Chat is not connected yet. Try again.'); return; }
+      var orig = imgBtn.innerHTML;
+      imgBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+      try {
+        var comp = await compressImage(f, 1024);
+        var url = await uploadImage(comp);
+        await sendVisitorMessage('', url);
+      } catch (e) {
+        alert('Image upload failed: ' + e.message);
+      } finally {
+        imgBtn.innerHTML = orig;
+      }
+    });
+
+    // If we already have a chat loaded, render existing messages
+    if (RHC.currentChatId) {
+      listenToChat(RHC.currentChatId);
+    } else {
+      // Show name prompt if no chat yet
+      showNamePrompt();
+    }
+  }
+
+  function showNamePrompt() {
+    if (!chatMessages) return;
+    chatMessages.innerHTML = `
+      <div class="rhc-name-prompt">
+        <h3>Welcome to Rental Home Connect 👋</h3>
+        <p>Tell us your name and we'll connect you with one of our agents. We typically reply in under 2 minutes.</p>
+        <input id="rhc-name-input" placeholder="Your name" value="${RHC.visitorName || ''}">
+        <button id="rhc-start-btn">Start chat</button>
+      </div>`;
+    var btn = chatMessages.querySelector('#rhc-start-btn');
+    var input = chatMessages.querySelector('#rhc-name-input');
+    btn.addEventListener('click', startNewChat);
+    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') startNewChat(); });
+    input.focus();
+  }
+
+  async function startNewChat() {
+    var nameInput = widget.querySelector('#rhc-name-input');
+    var name = (nameInput ? nameInput.value.trim() : '') || 'Visitor';
+    RHC.visitorName = name;
+    localStorage.setItem('rhc_visitor_name', name);
+    if (!RHC.db) { alert('Chat is still connecting. Try again in a moment.'); return; }
+    chatMessages.innerHTML = '<div style="text-align:center;color:#64748B;font-size:13px;padding:20px">Connecting…</div>';
+    try {
+      var uid = RHC.auth.currentUser ? RHC.auth.currentUser.uid : 'anon-' + Math.random().toString(36).slice(2);
+      var chatRef = await RHC.db.collection('chats').add({
+        visitorName: name,
+        visitorUid: uid,
+        visitorEmail: '',
+        status: 'waiting',
+        lastMessage: '',
+        lastSenderType: 'customer',
+        createdAt: RHC.fb.firestore.FieldValue.serverTimestamp(),
+        updatedAt: RHC.fb.firestore.FieldValue.serverTimestamp()
+      });
+      RHC.currentChatId = chatRef.id;
+      localStorage.setItem('rhc_chat_id', RHC.currentChatId);
+      // Add welcome message
+      await chatRef.collection('messages').add({
+        text: "Hi " + name + "! 👋 Thanks for reaching out to Rental Home Connect. How can I help you find your next home today?",
+        senderType: 'admin',
+        senderEmail: 'bot',
+        timestamp: RHC.fb.firestore.FieldValue.serverTimestamp()
+      });
+      await chatRef.set({
+        lastMessage: "Hi " + name + "! 👋 How can I help you find your next home today?",
+        lastSenderType: 'admin',
+        status: 'active',
+        updatedAt: RHC.fb.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      listenToChat(RHC.currentChatId);
+    } catch (e) {
+      console.error('startNewChat', e);
+      chatMessages.innerHTML = '<div style="text-align:center;color:#EF4444;font-size:13px;padding:20px">Could not start chat. ' + (e.message || '') + '</div>';
+    }
+  }
+
+  function listenToChat(chatId) {
+    if (RHC.unsubMsgs) { try { RHC.unsubMsgs(); } catch(e){} }
+    if (RHC.unsubMeta) { try { RHC.unsubMeta(); } catch(e){} }
+    chatMessages.innerHTML = '';
+    RHC.unsubMsgs = RHC.db.collection('chats').doc(chatId).collection('messages')
+      .orderBy('timestamp', 'asc')
+      .onSnapshot(function(snap) {
+        // Render all messages
+        chatMessages.innerHTML = '';
+        snap.forEach(function(d) {
+          var m = d.data();
+          appendMessage(m);
+        });
+        // Scroll to bottom
+        setTimeout(function() { chatMessages.scrollTop = chatMessages.scrollHeight; }, 50);
+      });
+    // Typing indicator
+    RHC.unsubMeta = RHC.db.collection('chats').doc(chatId).onSnapshot(function(d) {
+      var data = d.data() || {};
+      var isTyping = data.adminTyping && (Date.now() - (data.adminTypingAt && data.adminTypingAt.toMillis ? data.adminTypingAt.toMillis() : 0) < 5000);
+      var ind = widget && widget.querySelector('#rhc-typing');
+      if (ind) ind.classList.toggle('show', !!isTyping);
+      // Update unread badge if chat is closed
+      if (!chatOpen && data.lastSenderType === 'admin') {
+        var b = widget.querySelector('#rhc-unread');
+        if (b) {
+          var n = parseInt(b.textContent || '0') + 1;
+          b.textContent = n; b.classList.remove('hidden');
+        }
+      }
+    });
+  }
+
+  function appendMessage(m) {
+    var div = document.createElement('div');
+    var isVisitor = m.senderType !== 'admin';
+    div.className = 'rhc-msg ' + (isVisitor ? 'visitor' : 'agent');
+    var html = '';
+    if (m.text) html += escapeHtml(m.text);
+    if (m.attachmentUrl) {
+      var full = m.attachmentUrl;
+      if (full.indexOf('res.cloudinary.com/dfd1bgdam') >= 0) {
+        full = full.replace('/upload/', '/upload/q_auto,f_auto/');
+      }
+      html += '<br><img src="' + escapeHtml(full) + '" onclick="window.open(\'' + escapeHtml(full) + '\',\'_blank\')" style="cursor:zoom-in">';
+    }
+    var ts = m.timestamp ? new Date(m.timestamp.toMillis ? m.timestamp.toMillis() : Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+    html += '<div class="ts">' + ts + '</div>';
+    div.innerHTML = html;
+    chatMessages.appendChild(div);
+  }
+
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  async function sendVisitorMessage(text, attachmentUrl) {
+    if (!text && !attachmentUrl) {
+      text = chatInput.value.trim();
+      chatInput.value = '';
+      chatInput.style.height = '40px';
+      if (!text) return;
+    }
+    if (!RHC.currentChatId || !RHC.db) {
+      // Not connected — start a new chat
+      await startNewChat();
+      if (!RHC.currentChatId) return;
+    }
+    try {
+      var chatRef = RHC.db.collection('chats').doc(RHC.currentChatId);
+      await chatRef.collection('messages').add({
+        text: text || '',
+        attachmentUrl: attachmentUrl || '',
+        senderType: 'customer',
+        senderName: RHC.visitorName || 'Visitor',
+        timestamp: RHC.fb.firestore.FieldValue.serverTimestamp()
+      });
+      await chatRef.set({
+        lastMessage: text || (attachmentUrl ? '[image]' : ''),
+        lastSenderType: 'customer',
+        updatedAt: RHC.fb.firestore.FieldValue.serverTimestamp(),
+        visitorTyping: false,
+        status: 'waiting'
+      }, { merge: true });
+    } catch (e) {
+      console.error('sendVisitorMessage', e);
+      var div = document.createElement('div');
+      div.className = 'rhc-msg agent';
+      div.style.background = '#FEE2E2';
+      div.style.color = '#EF4444';
+      div.textContent = 'Could not send message. ' + (e.message || '');
+      chatMessages.appendChild(div);
+    }
+  }
+
+  // ---------- City carousels injection ----------
+  // Listen to the `cities` collection. If admin has added cities, we render a
+  // horizontal-scroll carousel section above the existing listings grid.
+  // (If no cities in Firestore yet, we don't inject anything — the React app
+  // shows its built-in city filter dropdown.)
+
+  var carouselHost = null;
+  var rhcCities = [];
+  var rhcListings = [];
+
+  function injectCarouselHost() {
+    if (carouselHost) return;
+    // Find the listings section and insert above it
+    var listingsEl = document.getElementById('listings');
+    if (!listingsEl) return; // not on homepage yet, will retry
+    carouselHost = document.createElement('div');
+    carouselHost.id = 'rhc-city-carousels';
+    carouselHost.style.cssText = 'max-width:1600px;margin:0 auto;padding:32px 16px;';
+    listingsEl.parentElement.insertBefore(carouselHost, listingsEl);
+    renderCarousels();
+  }
+
+  function renderCarousels() {
+    if (!carouselHost) return;
+    if (rhcCities.length === 0) {
+      carouselHost.innerHTML = '';
+      return;
+    }
+    var html = '<h2 style="font-family:Cormorant Garamond,serif;font-size:26px;color:#1A1A18;margin-bottom:4px">Browse homes by city</h2>' +
+               '<p style="font-size:13px;color:#64748B;margin-bottom:20px">Click a city name to view all homes in that market.</p>';
+    rhcCities.forEach(function(c) {
+      var cityListings = rhcListings.filter(function(l) { return l.city === c.city; });
+      var display = cityListings.length > 0 ? cityListings.slice(0, 5) : [];
+      html += '<div style="margin-bottom:32px">';
+      html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px">';
+      html += '<h3 style="font-family:Cormorant Garamond,serif;font-size:22px;color:#1A1A18;cursor:pointer;text-decoration:none" onclick="document.querySelector(\'[data-city-filter]\')&&document.querySelector(\'[data-city-filter]\').click()">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</h3>';
+      html += '<span style="font-size:12px;color:#64748B">' + cityListings.length + ' homes</span>';
+      html += '</div>';
+      if (display.length === 0) {
+        html += '<div style="padding:20px;background:#FAFAF8;border:1px dashed #E8E2D9;border-radius:14px;color:#64748B;font-size:13px;text-align:center">No listings in ' + escapeHtml(c.city) + ' yet. Add some from the admin dashboard.</div>';
+      } else {
+        html += '<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:6px;-webkit-overflow-scrolling:touch;scrollbar-width:thin">';
+        display.forEach(function(h) {
+          var img = (h.images && h.images[0]) || 'https://via.placeholder.com/400x300?text=No+Image';
+          if (img.indexOf('res.cloudinary.com/dfd1bgdam') >= 0) {
+            img = img.replace('/upload/', '/upload/w_400,h_300,c_fill,q_auto,f_auto/');
+          }
+          html += '<div style="flex:0 0 280px;background:#fff;border:1px solid #E8E2D9;border-radius:16px;overflow:hidden;cursor:pointer;transition:transform .2s" onclick="window.location.hash=\'#listing-' + h.id + '\'">';
+          html += '<div style="height:180px;background:#F5F1EB;overflow:hidden"><img src="' + escapeHtml(img) + '" style="width:100%;height:100%;object-fit:cover" loading="lazy"></div>';
+          html += '<div style="padding:14px">';
+          html += '<div style="font-size:13px;color:#64748B">' + escapeHtml(h.type || 'House') + ' • ' + (h.beds || 0) + ' bd • ' + (h.baths || 0) + ' ba</div>';
+          html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin:4px 0">' + escapeHtml(h.address || 'Address') + '</div>';
+          html += '<div style="font-size:16px;font-weight:700;color:#0A66FF">$' + ((h.price || 0).toLocaleString()) + '/mo</div>';
+          html += '</div></div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    carouselHost.innerHTML = html;
+  }
+
+  async function initCityCarousels() {
+    if (!RHC.db) { setTimeout(initCityCarousels, 2000); return; }
+    // Listen to cities
+    RHC.db.collection('cities').onSnapshot(function(snap) {
+      rhcCities = [];
+      snap.forEach(function(d) { rhcCities.push({ id: d.id, ...d.data() }); });
+      injectCarouselHost();
+      renderCarousels();
+    });
+    // Listen to listings
+    RHC.db.collection('listings').onSnapshot(function(snap) {
+      rhcListings = [];
+      snap.forEach(function(d) { rhcListings.push({ id: d.id, ...d.data() }); });
+      renderCarousels();
+    });
+  }
+
+  // ---------- Bootstrap ----------
+  // Wait for DOM ready + main React app to mount
+  function start() {
+    // Inject chat widget on every page
+    showChatWidget();
+    // Init Firebase for chat
+    initFirebase().then(function() {
+      // If we have a chat already, listen to it
+      if (RHC.currentChatId) listenToChat(RHC.currentChatId);
+    });
+    // Try to inject city carousels (will retry until listings div exists)
+    initFirebase().then(initCityCarousels);
+    // Re-try carousel injection every 1.5s for first 30s (in case React re-mounts)
+    var tries = 0;
+    var interval = setInterval(function() {
+      tries++;
+      if (tries > 20) { clearInterval(interval); return; }
+      if (!carouselHost || !document.getElementById('listings')) {
+        injectCarouselHost();
+      } else if (rhcCities.length > 0) {
+        // Already injected — but listings may have changed; just re-render
+        renderCarousels();
+      }
+    }, 1500);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start);
+  } else {
+    start();
+  }
+})();
+</script>
+
 </body>
 </html>

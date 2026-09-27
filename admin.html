@@ -1,0 +1,1935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5.0">
+<title>Rental Home Connect — Staff Portal</title>
+<meta name="robots" content="noindex,nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+<!-- Firebase 9.23.0 compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: hidden; max-width: 100%; }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background: #F5F1EB;
+    color: #1A1A18;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,h2,h3,h4,h5 { font-family: 'Inter', sans-serif; font-weight: 700; }
+  img { max-width: 100%; display: block; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+  input, textarea, select { font-family: inherit; }
+  a { color: inherit; text-decoration: none; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+  :root {
+    --primary: #0A66FF;
+    --primary-dark: #0852CC;
+    --dark: #1A1A18;
+    --light: #FFFCF8;
+    --gray: #64748B;
+    --border: #E8E2D9;
+    --accent: #F5F1EB;
+    --error: #EF4444;
+    --success: #10B981;
+    --warning: #F59E0B;
+  }
+
+  /* ============================ TOAST ============================ */
+  #toast-container {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 10000; display: flex; flex-direction: column; gap: 8px;
+    width: calc(100% - 32px); max-width: 420px; pointer-events: none;
+  }
+  .toast {
+    background: #1A1A18; color: #fff; padding: 12px 16px; border-radius: 12px;
+    font-size: 14px; font-weight: 500; box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    display: flex; align-items: center; gap: 10px; pointer-events: auto;
+    animation: toastIn .25s ease;
+  }
+  .toast.error { background: var(--error); }
+  .toast.success { background: var(--success); }
+  .toast.warning { background: var(--warning); color: #1A1A18; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ============================ LOGIN ============================ */
+  .login-wrap {
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #0A66FF 0%, #1A1A18 100%);
+    padding: 20px;
+  }
+  .login-card {
+    background: #FFFCF8; border-radius: 24px; padding: 40px 32px;
+    width: 100%; max-width: 420px; box-shadow: 0 24px 60px rgba(0,0,0,.3);
+    text-align: center;
+  }
+  .login-logo {
+    width: 72px; height: 72px; border-radius: 18px; margin: 0 auto 20px;
+    background: linear-gradient(135deg, #0A66FF, #1A1A18);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-size: 32px; box-shadow: 0 12px 28px rgba(10,102,255,.35);
+    overflow: hidden;
+  }
+  .login-logo img { width: 100%; height: 100%; object-fit: contain; }
+  .login-card h1 { font-size: 24px; color: var(--dark); margin-bottom: 4px; }
+  .login-card .sub { color: var(--gray); font-size: 14px; margin-bottom: 28px; }
+  .login-card .field {
+    text-align: left; margin-bottom: 16px;
+  }
+  .login-card label {
+    display: block; font-size: 13px; font-weight: 600; color: var(--dark);
+    margin-bottom: 6px;
+  }
+  .login-card input {
+    width: 100%; padding: 12px 14px; border-radius: 12px;
+    border: 1.5px solid var(--border); background: #fff; font-size: 14px;
+    transition: border .2s, box-shadow .2s;
+  }
+  .login-card input:focus {
+    outline: none; border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(10,102,255,.12);
+  }
+  .login-card button {
+    width: 100%; padding: 14px; border-radius: 12px;
+    background: var(--primary); color: #fff; font-weight: 700; font-size: 15px;
+    box-shadow: 0 8px 20px rgba(10,102,255,.35);
+    transition: transform .15s, background .2s; margin-top: 8px;
+  }
+  .login-card button:hover { transform: translateY(-1px); background: var(--primary-dark); }
+  .login-card button:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+  .login-card .back-link {
+    display: inline-block; margin-top: 20px; color: var(--gray);
+    font-size: 13px; text-decoration: underline;
+  }
+  .login-card .back-link:hover { color: var(--primary); }
+
+  /* ============================ ADMIN LAYOUT ============================ */
+  .admin-layout {
+    display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; min-height: 100dvh;
+  }
+  .admin-sidebar {
+    background: var(--dark); color: #CBD5E1; padding: 20px 0;
+    position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .admin-brand {
+    display: flex; align-items: center; gap: 10px; padding: 0 20px 24px;
+    border-bottom: 1px solid rgba(255,255,255,.08); margin-bottom: 16px;
+  }
+  .admin-brand .brand-shield {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: linear-gradient(135deg, #0A66FF, #1A1A18);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px;
+    overflow: hidden; flex-shrink: 0;
+  }
+  .admin-brand .brand-shield img { width: 100%; height: 100%; object-fit: contain; }
+  .admin-brand .brand-name {
+    font-family: 'Cormorant Garamond', serif; font-weight: 700; font-size: 18px;
+    color: #fff; line-height: 1.1;
+  }
+  .admin-brand .brand-tag { font-size: 11px; color: #64748B; }
+
+  .nav-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px; color: #CBD5E1; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: all .15s; border-left: 3px solid transparent;
+  }
+  .nav-item i { width: 18px; font-size: 15px; }
+  .nav-item:hover { background: rgba(255,255,255,.04); color: #fff; }
+  .nav-item.active {
+    background: rgba(10,102,255,.15); color: #fff;
+    border-left-color: var(--primary);
+  }
+  .nav-badge {
+    margin-left: auto; background: var(--error); color: #fff;
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+    min-width: 20px; text-align: center;
+  }
+  .admin-user {
+    margin-top: auto; padding: 16px 20px; border-top: 1px solid rgba(255,255,255,.08);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .admin-user .avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg, #0A66FF, #1A1A18);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-weight: 700; font-size: 13px; flex-shrink: 0;
+  }
+  .admin-user .user-info { flex: 1; min-width: 0; }
+  .admin-user .user-email { font-size: 12px; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-user .user-role { font-size: 10px; color: #64748B; }
+  .admin-user .sign-out-btn {
+    color: #94A3B8; padding: 6px; border-radius: 6px; transition: all .15s;
+  }
+  .admin-user .sign-out-btn:hover { background: rgba(239,68,68,.15); color: var(--error); }
+
+  .admin-main {
+    padding: 24px 28px; max-width: 100%; overflow-x: hidden;
+  }
+  .admin-main h1 {
+    font-family: 'Cormorant Garamond', serif; font-weight: 600;
+    font-size: 28px; color: var(--dark); margin-bottom: 4px;
+  }
+  .admin-main .page-sub { color: var(--gray); font-size: 14px; margin-bottom: 24px; }
+
+  /* KPI grid */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px; margin-bottom: 24px;
+  }
+  .kpi-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    padding: 18px 20px; transition: transform .2s, box-shadow .2s;
+  }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,.06); }
+  .kpi-card .kpi-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: rgba(10,102,255,.08); color: var(--primary);
+    display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 10px;
+  }
+  .kpi-card .kpi-value {
+    font-size: 26px; font-weight: 800; color: var(--dark); line-height: 1; letter-spacing: -.5px;
+  }
+  .kpi-card .kpi-label { font-size: 12px; color: var(--gray); margin-top: 4px; font-weight: 500; }
+
+  /* Cards / panels */
+  .panel {
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    padding: 22px; margin-bottom: 20px;
+  }
+  .panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 18px; gap: 12px; flex-wrap: wrap;
+  }
+  .panel-header h2 {
+    font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 22px; color: var(--dark);
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 18px; border-radius: 10px; font-weight: 600; font-size: 13px;
+    transition: all .15s;
+  }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { background: var(--primary-dark); transform: translateY(-1px); }
+  .btn-ghost { background: #F5F1EB; color: var(--dark); }
+  .btn-ghost:hover { background: var(--border); }
+  .btn-danger { background: rgba(239,68,68,.1); color: var(--error); }
+  .btn-danger:hover { background: var(--error); color: #fff; }
+
+  /* Chat inbox */
+  .chat-layout {
+    display: grid; grid-template-columns: 320px 1fr;
+    background: #fff; border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; height: calc(100vh - 200px); height: calc(100dvh - 200px); min-height: 480px;
+  }
+  .chat-list {
+    border-right: 1px solid var(--border); overflow-y: auto; background: #FAFAF8;
+  }
+  .chat-list-header {
+    padding: 16px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+    background: #fff; z-index: 2;
+  }
+  .chat-search {
+    width: 100%; padding: 8px 12px 8px 32px; border-radius: 10px;
+    border: 1px solid var(--border); background: #F5F1EB; font-size: 13px;
+    position: relative;
+  }
+  .chat-search-wrap { position: relative; }
+  .chat-search-wrap i {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--gray); font-size: 12px;
+  }
+  .chat-item {
+    padding: 14px 16px; border-bottom: 1px solid #F1F5F9; cursor: pointer;
+    transition: background .15s; display: flex; gap: 12px; align-items: center;
+  }
+  .chat-item:hover { background: #FFF; }
+  .chat-item.active { background: rgba(10,102,255,.06); border-left: 3px solid var(--primary); }
+  .chat-avatar {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #0A66FF, #1A1A18);
+    display: flex; align-items: center; justify-content: center; color: #fff;
+    font-weight: 700; font-size: 14px;
+  }
+  .chat-meta { flex: 1; min-width: 0; }
+  .chat-meta .name { font-size: 14px; font-weight: 600; color: var(--dark); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-meta .preview { font-size: 12px; color: var(--gray); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+  .chat-meta .time { font-size: 10px; color: #94A3B8; }
+  .chat-item .unread {
+    background: var(--error); color: #fff; font-size: 10px; font-weight: 700;
+    padding: 2px 7px; border-radius: 10px; min-width: 18px; text-align: center;
+  }
+  .chat-item .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .status-dot.active { background: var(--success); }
+  .status-dot.waiting { background: var(--warning); }
+  .status-dot.resolved { background: #94A3B8; }
+
+  /* Conversation panel */
+  .conv-panel { display: flex; flex-direction: column; overflow: hidden; }
+  .conv-header {
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px; background: #fff;
+  }
+  .conv-header .info { flex: 1; }
+  .conv-header .info h3 { font-size: 16px; color: var(--dark); }
+  .conv-header .info .sub { font-size: 12px; color: var(--gray); }
+  .conv-messages {
+    flex: 1; overflow-y: auto; padding: 20px; background: #FAFAF8;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg {
+    max-width: 70%; padding: 10px 14px; border-radius: 16px;
+    font-size: 14px; line-height: 1.45; word-wrap: break-word; position: relative;
+  }
+  .msg.admin { background: var(--primary); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.customer { background: #fff; color: var(--dark); align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+  .msg .ts { font-size: 10px; opacity: .7; margin-top: 4px; }
+  .msg img { max-width: 240px; border-radius: 8px; margin-top: 6px; cursor: pointer; }
+  .typing-indicator {
+    align-self: flex-start; padding: 10px 14px; border-radius: 16px;
+    background: #fff; border: 1px solid var(--border); color: var(--gray);
+    font-size: 13px; display: none;
+  }
+  .typing-indicator.show { display: block; }
+  .typing-indicator .dots span {
+    display: inline-block; width: 6px; height: 6px; background: var(--gray);
+    border-radius: 50%; margin: 0 1px; animation: typingDot 1.4s infinite;
+  }
+  .typing-indicator .dots span:nth-child(2) { animation-delay: .2s; }
+  .typing-indicator .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes typingDot { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+  .conv-input {
+    padding: 14px 20px; border-top: 1px solid var(--border); background: #fff;
+    display: flex; gap: 10px; align-items: flex-end;
+  }
+  .conv-input textarea {
+    flex: 1; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border);
+    font-size: 14px; resize: none; min-height: 42px; max-height: 120px;
+    transition: border .2s;
+  }
+  .conv-input textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 4px rgba(10,102,255,.12); }
+  .icon-btn {
+    width: 42px; height: 42px; border-radius: 10px; background: #F5F1EB;
+    display: flex; align-items: center; justify-content: center; color: var(--dark);
+    transition: all .15s; flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--border); }
+  .icon-btn.send { background: var(--primary); color: #fff; }
+  .icon-btn.send:hover { background: var(--primary-dark); }
+  .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px; text-align: center; color: var(--gray);
+  }
+  .empty-state i { font-size: 48px; margin-bottom: 16px; opacity: .3; }
+  .empty-state h3 { color: var(--dark); margin-bottom: 4px; font-size: 18px; }
+
+  /* Tables */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table th {
+    text-align: left; padding: 12px 14px; background: #F5F1EB; color: var(--gray);
+    font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .3px;
+    border-bottom: 1px solid var(--border);
+  }
+  .data-table td { padding: 14px; border-bottom: 1px solid #F1F5F9; color: var(--dark); }
+  .data-table tr:hover { background: #FAFAF8; }
+  .data-table img.thumb { width: 60px; height: 40px; object-fit: cover; border-radius: 6px; }
+
+  /* Forms */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .form-field { display: flex; flex-direction: column; gap: 6px; }
+  .form-field label { font-size: 12px; font-weight: 600; color: var(--dark); }
+  .form-field input, .form-field textarea, .form-field select {
+    padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+    font-size: 13px; background: #fff; transition: border .2s, box-shadow .2s;
+  }
+  .form-field input:focus, .form-field textarea:focus, .form-field select:focus {
+    outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(10,102,255,.12);
+  }
+  .form-field textarea { resize: vertical; min-height: 80px; }
+  .form-actions { display: flex; gap: 10px; margin-top: 18px; }
+
+  /* Image grid */
+  .image-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+  }
+  .image-card {
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    background: #fff; transition: transform .15s, box-shadow .15s;
+  }
+  .image-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,.08); }
+  .image-card img { width: 100%; height: 120px; object-fit: cover; }
+  .image-card .info { padding: 10px 12px; }
+  .image-card .url { font-size: 11px; color: var(--gray); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .image-card .actions { display: flex; gap: 6px; margin-top: 8px; }
+  .image-card .actions button {
+    padding: 4px 10px; font-size: 11px; border-radius: 6px; background: #F5F1EB;
+  }
+  .image-card .actions button.del:hover { background: var(--error); color: #fff; }
+  .image-card .actions button.copy:hover { background: var(--primary); color: #fff; }
+
+  /* Upload zone */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 14px; padding: 28px;
+    text-align: center; cursor: pointer; transition: all .2s; margin-bottom: 20px;
+    background: #FAFAF8;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--primary); background: rgba(10,102,255,.04);
+  }
+  .upload-zone i { font-size: 36px; color: var(--primary); margin-bottom: 10px; }
+  .upload-zone h4 { font-size: 16px; color: var(--dark); margin-bottom: 4px; }
+  .upload-zone p { font-size: 13px; color: var(--gray); }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(26,26,24,.55); backdrop-filter: blur(4px);
+    z-index: 9000; display: flex; align-items: center; justify-content: center;
+    padding: 16px; animation: fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal-card {
+    background: #fff; border-radius: 20px; padding: 28px 24px;
+    width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3); animation: popIn .25s ease;
+  }
+  @keyframes popIn { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: scale(1); } }
+  .modal-card h3 { font-size: 20px; color: var(--dark); margin-bottom: 4px; }
+  .modal-card .modal-sub { color: var(--gray); font-size: 13px; margin-bottom: 20px; }
+  .modal-footer { display: flex; gap: 10px; margin-top: 24px; justify-content: flex-end; }
+
+  /* Mobile */
+  @media (max-width: 880px) {
+    .admin-layout { grid-template-columns: 1fr; }
+    .admin-sidebar {
+      position: fixed; top: 0; left: 0; width: 240px; transform: translateX(-100%);
+      z-index: 200; box-shadow: 0 0 40px rgba(0,0,0,.3); transition: transform .2s;
+    }
+    .admin-sidebar.open { transform: translateX(0); }
+    .admin-main { padding: 16px; }
+    .hamburger {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 10px; background: #fff;
+      border: 1px solid var(--border); color: var(--dark); font-size: 16px;
+      margin-bottom: 16px;
+    }
+    .chat-layout { grid-template-columns: 1fr; height: auto; }
+    .chat-list { max-height: 280px; }
+  }
+  @media (min-width: 881px) {
+    .hamburger { display: none; }
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:linear-gradient(135deg,#0A66FF,#1A1A18)">
+    <div style="text-align:center;color:#fff">
+      <div style="width:48px;height:48px;border-radius:50%;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .8s linear infinite;margin:0 auto 16px"></div>
+      <div style="font-size:14px;opacity:.8">Loading staff portal…</div>
+    </div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="modal-root"></div>
+
+<script>
+/* =====================================================================
+   Rental Home Connect — STAFF PORTAL
+   Single-file build. Firebase 9.23.0 compat SDK.
+   Reuses Cloudinary creds + chat pattern from the support wallet project.
+   ===================================================================== */
+
+/* ----------------------------- Firebase Config ----------------------------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyDTYjQ_wG7oaRd_gcMWliirn9z6yV24wtE",
+  authDomain: "rental-home-connect.firebaseapp.com",
+  projectId: "rental-home-connect",
+  storageBucket: "rental-home-connect.firebasestorage.app",
+  messagingSenderId: "753847542083",
+  appId: "1:753847542083:web:9c6d74a9029f6cce6b0ff6"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+let storage = null;
+try { storage = firebase.storage(); } catch (e) { storage = null; }
+
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
+  console.warn('Persistence set failed', err);
+});
+
+/* ----------------------------- Cloudinary Config ----------------------------- */
+/* Reused from the support wallet project. Unsigned client-side upload. */
+const CLOUDINARY = {
+  cloudName: 'dfd1bgdam',
+  uploadPreset: 'musk_chat_unsigned',
+  folder: 'rhc-properties'
+};
+window.CLOUDINARY = CLOUDINARY;
+
+async function uploadToCloudinary(blob, fileName) {
+  const fd = new FormData();
+  fd.append('file', blob, fileName || ('upload-' + Date.now() + '.jpg'));
+  fd.append('upload_preset', CLOUDINARY.uploadPreset);
+  if (CLOUDINARY.folder) fd.append('folder', CLOUDINARY.folder);
+  const endpoint = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY.cloudName + '/image/upload';
+  const res = await fetch(endpoint, { method: 'POST', body: fd });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error('Cloudinary HTTP ' + res.status + ' ' + txt.slice(0, 200));
+  }
+  const data = await res.json();
+  if (!data || !data.secure_url) throw new Error('Cloudinary: no secure_url in response');
+  return data.secure_url;
+}
+window.uploadToCloudinary = uploadToCloudinary;
+
+function cloudinaryThumb(url, transforms) {
+  if (!url || url.indexOf('res.cloudinary.com/' + CLOUDINARY.cloudName) === -1) return null;
+  const t = Object.keys(transforms || {}).map(k => `${k}_${transforms[k]}`).join(',');
+  return url.replace('/upload/', `/upload/${t}/`);
+}
+window.cloudinaryThumb = cloudinaryThumb;
+
+/* ----------------------------- State ----------------------------- */
+const State = {
+  isAdmin: false,
+  adminUser: null,
+  view: 'dashboard',
+  chats: [],
+  selectedChatId: null,
+  unsubChatsList: null,
+  unsubMessages: null,
+  unsubChatMeta: null,
+  chatFilter: 'active',
+  chatSearch: '',
+  listings: [],
+  cities: [],
+  images: [],
+  leads: [],
+  branding: { logoUrl: '', brandText: '', email: 'rentalhomeconnects@gmail.com', phone: '', tiktok: '_rentalhomeconnects', tiktokAgents: '_christopherhayes, _ethanhayes1' },
+  unsubBranding: null,
+  unsubListings: null,
+  unsubCities: null,
+  unsubLeads: null
+};
+
+/* ----------------------------- Helpers ----------------------------- */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+  return d.toLocaleDateString();
+}
+
+function timeShort(ts) {
+  if (!ts) return '';
+  const d = ts.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function initials(str) {
+  if (!str) return '?';
+  return str.split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(s => s[0].toUpperCase()).join('');
+}
+
+/* ----------------------------- Toast ----------------------------- */
+function toast(msg, type, opts) {
+  opts = opts || {};
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || '');
+  const icon = type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-circle-exclamation' : type === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-info';
+  t.innerHTML = `<i class="fa-solid ${icon}"></i><span>${escapeHtml(msg)}</span>`;
+  if (opts.duration === 0) {
+    const x = document.createElement('button');
+    x.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    x.style.cssText = 'background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;padding:2px 6px;cursor:pointer;margin-left:auto';
+    x.onclick = () => t.remove();
+    t.appendChild(x);
+  }
+  c.appendChild(t);
+  const dur = opts.duration != null ? opts.duration : 3500;
+  if (dur > 0) setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 250); }, dur);
+}
+window.toast = toast;
+
+/* ----------------------------- Modal ----------------------------- */
+function showConfirmModal(title, msg, confirmText, onConfirm) {
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width:380px;text-align:center">
+        <h3>${escapeHtml(title)}</h3>
+        <p style="color:var(--gray);font-size:14px;margin:8px 0 20px">${escapeHtml(msg)}</p>
+        <div class="modal-footer" style="justify-content:center">
+          <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+          <button class="btn btn-danger" id="modal-confirm">${escapeHtml(confirmText || 'Confirm')}</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById('modal-cancel').onclick = () => root.innerHTML = '';
+  document.getElementById('modal-confirm').onclick = async () => {
+    root.innerHTML = '';
+    if (onConfirm) await onConfirm();
+  };
+}
+window.showConfirmModal = showConfirmModal;
+
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+}
+
+/* ----------------------------- Login ----------------------------- */
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-logo" id="login-logo">
+          <i class="fa-solid fa-house-chimney"></i>
+        </div>
+        <h1>Rental Home Connect</h1>
+        <div class="sub">Staff Portal</div>
+        <form id="login-form" onsubmit="event.preventDefault();handleLogin()">
+          <div class="field">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" placeholder="you@rental.com" required autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="login-pass">Password</label>
+            <input type="password" id="login-pass" placeholder="••••••••" required autocomplete="current-password">
+          </div>
+          <button type="submit" id="login-btn">Sign In</button>
+        </form>
+        <a href="javascript:history.back()" class="back-link">← Back to home</a>
+      </div>
+    </div>`;
+  // Apply branding logo if available
+  if (State.branding.logoUrl) {
+    const logoEl = document.getElementById('login-logo');
+    logoEl.classList.add('has-img');
+    logoEl.innerHTML = `<img src="${escapeHtml(State.branding.logoUrl)}" alt="logo">`;
+  }
+}
+
+async function handleLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const btn = document.getElementById('login-btn');
+  if (!email || !pass) return;
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const cred = await auth.signInWithEmailAndPassword(email, pass);
+    const user = cred.user;
+    const userDoc = await db.collection('users').doc(user.uid).get();
+    let isAdmin = false;
+    if (userDoc.exists && userDoc.data().isAdmin === true) {
+      isAdmin = true;
+    } else if (!userDoc.exists) {
+      // Bootstrap: first admin auto-promotes
+      if (!getCachedAdmin()) {
+        try {
+          await db.collection('users').doc(user.uid).set({
+            email: user.email,
+            isAdmin: true,
+            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          isAdmin = true;
+        } catch (e) { console.warn('bootstrap admin create failed', e); }
+      }
+    }
+    if (!isAdmin) {
+      await auth.signOut();
+      toast('Access denied. This account is not a staff member.', 'error');
+      btn.disabled = false; btn.textContent = 'Sign In';
+      return;
+    }
+    State.isAdmin = true;
+    State.adminUser = { uid: user.uid, email: user.email, lastLogin: new Date() };
+    localStorage.setItem('rhc_admin', JSON.stringify(State.adminUser));
+    renderAdmin();
+    startAdminWatchers();
+  } catch (err) {
+    console.error('login err', err);
+    if (err && (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential')) {
+      toast('Incorrect email or password.', 'error');
+    } else if (err && err.code === 'auth/too-many-requests') {
+      toast('Too many attempts. Try again later.', 'error');
+    } else if (err && (err.code === 'auth/network-request-failed' || err.code === 'auth/internal-error')) {
+      toast('Network issue. Check your connection.', 'error');
+    } else {
+      toast('Sign in failed. ' + (err && err.code ? '(' + err.code + ')' : ''), 'error');
+    }
+    btn.disabled = false; btn.textContent = 'Sign In';
+  }
+}
+window.handleLogin = handleLogin;
+
+function getCachedAdmin() {
+  try { return JSON.parse(localStorage.getItem('rhc_admin') || 'null'); } catch (e) { return null; }
+}
+
+function signOutAdmin() {
+  showConfirmModal('Sign out?', 'Are you sure?', 'Sign Out', async () => {
+    try {
+      if (State.unsubChatsList) { try { State.unsubChatsList(); } catch(e){} State.unsubChatsList = null; }
+      if (State.unsubMessages) { try { State.unsubMessages(); } catch(e){} State.unsubMessages = null; }
+      if (State.unsubBranding) { try { State.unsubBranding(); } catch(e){} State.unsubBranding = null; }
+      if (State.unsubListings) { try { State.unsubListings(); } catch(e){} State.unsubListings = null; }
+      if (State.unsubCities) { try { State.unsubCities(); } catch(e){} State.unsubCities = null; }
+      if (State.unsubLeads) { try { State.unsubLeads(); } catch(e){} State.unsubLeads = null; }
+      await auth.signOut();
+    } catch (e) { console.warn(e); }
+    localStorage.removeItem('rhc_admin');
+    State.isAdmin = false;
+    State.adminUser = null;
+    renderLogin();
+  });
+}
+window.signOutAdmin = signOutAdmin;
+
+/* ----------------------------- Admin Render ----------------------------- */
+function renderAdmin() {
+  const u = State.adminUser || getCachedAdmin() || {};
+  document.getElementById('app').innerHTML = `
+    <div class="admin-layout">
+      <aside class="admin-sidebar" id="admin-sidebar">
+        <div class="admin-brand">
+          <div class="brand-shield" id="brand-shield">
+            <i class="fa-solid fa-house-chimney"></i>
+          </div>
+          <div>
+            <div class="brand-name">Rental Home Connect</div>
+            <div class="brand-tag">Staff Portal</div>
+          </div>
+        </div>
+        <div class="nav-item ${State.view==='dashboard'?'active':''}" onclick="setView('dashboard')">
+          <i class="fa-solid fa-gauge"></i> Dashboard
+        </div>
+        <div class="nav-item ${State.view==='chats'?'active':''}" onclick="setView('chats')">
+          <i class="fa-solid fa-comment-dots"></i> Live Chat
+          <span class="nav-badge hidden" id="nav-chats-badge">0</span>
+        </div>
+        <div class="nav-item ${State.view==='leads'?'active':''}" onclick="setView('leads')">
+          <i class="fa-solid fa-inbox"></i> Leads
+          <span class="nav-badge hidden" id="nav-leads-badge">0</span>
+        </div>
+        <div class="nav-item ${State.view==='listings'?'active':''}" onclick="setView('listings')">
+          <i class="fa-solid fa-building"></i> Properties
+        </div>
+        <div class="nav-item ${State.view==='cities'?'active':''}" onclick="setView('cities')">
+          <i class="fa-solid fa-city"></i> Cities
+        </div>
+        <div class="nav-item ${State.view==='images'?'active':''}" onclick="setView('images')">
+          <i class="fa-solid fa-images"></i> Image Manager
+        </div>
+        <div class="nav-item ${State.view==='settings'?'active':''}" onclick="setView('settings')">
+          <i class="fa-solid fa-gear"></i> Settings
+        </div>
+        <div class="admin-user">
+          <div class="avatar">${escapeHtml(initials(u.email || 'A'))}</div>
+          <div class="user-info">
+            <div class="user-email">${escapeHtml(u.email || '')}</div>
+            <div class="user-role">Administrator</div>
+          </div>
+          <button class="sign-out-btn" onclick="signOutAdmin()" title="Sign out">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          </button>
+        </div>
+      </aside>
+      <main class="admin-main" id="admin-main">
+        <button class="hamburger" onclick="document.getElementById('admin-sidebar').classList.toggle('open')">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div id="view-host"></div>
+      </main>
+    </div>`;
+  applyBrandingToDocument();
+  renderView();
+}
+
+function setView(v) {
+  State.view = v;
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const items = document.querySelectorAll('.nav-item');
+  const idx = { dashboard:0, chats:1, leads:2, listings:3, cities:4, images:5, settings:6 }[v];
+  if (idx != null && items[idx]) items[idx].classList.add('active');
+  renderView();
+  // Close sidebar on mobile
+  document.getElementById('admin-sidebar').classList.remove('open');
+}
+window.setView = setView;
+
+function renderView() {
+  const host = document.getElementById('view-host');
+  if (!host) return;
+  switch (State.view) {
+    case 'dashboard': host.innerHTML = renderDashboard(); break;
+    case 'chats': host.innerHTML = renderChats(); attachChatHandlers(); break;
+    case 'leads': host.innerHTML = renderLeads(); break;
+    case 'listings': host.innerHTML = renderListings(); break;
+    case 'cities': host.innerHTML = renderCities(); break;
+    case 'images': host.innerHTML = renderImages(); break;
+    case 'settings': host.innerHTML = renderSettings(); break;
+    default: host.innerHTML = renderDashboard();
+  }
+}
+
+/* ----------------------------- Dashboard ----------------------------- */
+function renderDashboard() {
+  const activeChats = State.chats.filter(c => c.status === 'active').length;
+  const waitingChats = State.chats.filter(c => c.status === 'waiting').length;
+  const unresolvedLeads = State.leads.filter(l => !l.resolved).length;
+  const totalListings = State.listings.length;
+  const totalCities = State.cities.length;
+  const totalImages = State.images.length;
+
+  return `
+    <h1>Dashboard</h1>
+    <div class="page-sub">Welcome back. Here's what's happening at Rental Home Connect today.</div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-comment-dots"></i></div>
+        <div class="kpi-value">${activeChats + waitingChats}</div>
+        <div class="kpi-label">Active chats</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-inbox"></i></div>
+        <div class="kpi-value">${unresolvedLeads}</div>
+        <div class="kpi-label">New leads</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-building"></i></div>
+        <div class="kpi-value">${totalListings}</div>
+        <div class="kpi-label">Properties</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-city"></i></div>
+        <div class="kpi-value">${totalCities}</div>
+        <div class="kpi-label">Cities</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-images"></i></div>
+        <div class="kpi-value">${totalImages}</div>
+        <div class="kpi-label">Images</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Recent chats</h2>
+        <button class="btn btn-primary" onclick="setView('chats')">
+          View all <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </div>
+      ${State.chats.length === 0 ? `
+        <div class="empty-state" style="padding:30px">
+          <i class="fa-regular fa-comments"></i>
+          <h3>No chats yet</h3>
+          <p>When visitors open the live chat on your site, they'll appear here.</p>
+        </div>
+      ` : `
+        <table class="data-table">
+          <thead><tr><th>Visitor</th><th>Last message</th><th>Status</th><th>Updated</th></tr></thead>
+          <tbody>
+            ${State.chats.slice(0, 6).map(c => `
+              <tr style="cursor:pointer" onclick="setView('chats');selectChat('${c.id}')">
+                <td><strong>${escapeHtml(c.visitorName || c.id.slice(0, 8))}</strong></td>
+                <td>${escapeHtml((c.lastMessage || '').slice(0, 60))}</td>
+                <td><span class="status-dot ${c.status || 'waiting'}" style="display:inline-block;vertical-align:middle"></span> ${c.status || 'waiting'}</td>
+                <td>${timeAgo(c.updatedAt)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Quick actions</h2>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+        <button class="btn btn-ghost" onclick="setView('listings')"><i class="fa-solid fa-plus"></i> Add property</button>
+        <button class="btn btn-ghost" onclick="setView('cities')"><i class="fa-solid fa-plus"></i> Add city</button>
+        <button class="btn btn-ghost" onclick="setView('images')"><i class="fa-solid fa-upload"></i> Upload images</button>
+        <button class="btn btn-ghost" onclick="setView('settings')"><i class="fa-solid fa-paintbrush"></i> Edit branding</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ----------------------------- Chats ----------------------------- */
+function renderChats() {
+  return `
+    <h1>Live Chat</h1>
+    <div class="page-sub">Real-time conversations with site visitors.</div>
+    <div class="chat-layout">
+      <div class="chat-list">
+        <div class="chat-list-header">
+          <div class="chat-search-wrap">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input class="chat-search" id="chat-search-input"
+                   placeholder="Search visitors..."
+                   oninput="State.chatSearch=this.value;renderChatList()">
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn ${State.chatFilter==='active'?'btn-primary':'btn-ghost'}" style="padding:6px 12px;font-size:12px" onclick="State.chatFilter='active';renderChatList()">Active</button>
+            <button class="btn ${State.chatFilter==='waiting'?'btn-primary':'btn-ghost'}" style="padding:6px 12px;font-size:12px" onclick="State.chatFilter='waiting';renderChatList()">Waiting</button>
+            <button class="btn ${State.chatFilter==='resolved'?'btn-primary':'btn-ghost'}" style="padding:6px 12px;font-size:12px" onclick="State.chatFilter='resolved';renderChatList()">Resolved</button>
+            <button class="btn ${State.chatFilter==='all'?'btn-primary':'btn-ghost'}" style="padding:6px 12px;font-size:12px" onclick="State.chatFilter='all';renderChatList()">All</button>
+          </div>
+        </div>
+        <div id="chat-list-items"></div>
+      </div>
+      <div class="conv-panel" id="conv-panel">
+        <div class="empty-state">
+          <i class="fa-regular fa-comment"></i>
+          <h3>Select a conversation</h3>
+          <p>Pick a chat on the left to view messages and reply.</p>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderChatList() {
+  const host = document.getElementById('chat-list-items');
+  if (!host) return;
+  let chats = State.chats;
+  if (State.chatFilter !== 'all') chats = chats.filter(c => (c.status || 'waiting') === State.chatFilter);
+  if (State.chatSearch.trim()) {
+    const q = State.chatSearch.trim().toLowerCase();
+    chats = chats.filter(c => (c.visitorName || c.id || '').toLowerCase().includes(q));
+  }
+  chats.sort((a, b) => {
+    const ta = a.updatedAt ? (a.updatedAt.toMillis ? a.updatedAt.toMillis() : new Date(a.updatedAt).getTime()) : 0;
+    const tb = b.updatedAt ? (b.updatedAt.toMillis ? b.updatedAt.toMillis() : new Date(b.updatedAt).getTime()) : 0;
+    return tb - ta;
+  });
+
+  if (chats.length === 0) {
+    host.innerHTML = `<div class="empty-state" style="padding:30px"><i class="fa-regular fa-comments"></i><h3>No chats</h3><p>No conversations match this filter.</p></div>`;
+    return;
+  }
+  host.innerHTML = chats.map(c => `
+    <div class="chat-item ${State.selectedChatId === c.id ? 'active' : ''}" onclick="selectChat('${c.id}')">
+      <div class="chat-avatar">${escapeHtml(initials(c.visitorName || c.id))}</div>
+      <div class="chat-meta">
+        <div class="name">${escapeHtml(c.visitorName || c.id.slice(0, 8))}</div>
+        <div class="preview">${escapeHtml((c.lastMessage || 'No messages yet').slice(0, 40))}</div>
+        <div class="time">${timeAgo(c.updatedAt)}</div>
+      </div>
+      <span class="status-dot ${c.status || 'waiting'}"></span>
+      ${c.unreadCount ? `<span class="unread">${c.unreadCount}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+function selectChat(chatId) {
+  State.selectedChatId = chatId;
+  renderChatList();
+  renderConversation();
+  // Mark as read
+  db.collection('chats').doc(chatId).set({
+    adminReadAt: firebase.firestore.FieldValue.serverTimestamp(),
+    status: 'active'
+  }, { merge: true }).catch(e => console.warn('markRead', e));
+}
+window.selectChat = selectChat;
+
+function renderConversation() {
+  const panel = document.getElementById('conv-panel');
+  if (!panel) return;
+  const chat = State.chats.find(c => c.id === State.selectedChatId);
+  if (!chat) {
+    panel.innerHTML = `
+      <div class="empty-state">
+        <i class="fa-regular fa-comment"></i>
+        <h3>Select a conversation</h3>
+        <p>Pick a chat on the left to view messages and reply.</p>
+      </div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="conv-header">
+      <div class="chat-avatar">${escapeHtml(initials(chat.visitorName || chat.id))}</div>
+      <div class="info">
+        <h3>${escapeHtml(chat.visitorName || 'Visitor ' + chat.id.slice(0, 8))}</h3>
+        <div class="sub">${chat.visitorEmail || 'Anonymous visitor'} • ${chat.status || 'waiting'}</div>
+      </div>
+      <button class="btn btn-ghost" onclick="resolveChat('${chat.id}')">
+        <i class="fa-solid fa-check"></i> Mark resolved
+      </button>
+    </div>
+    <div class="conv-messages" id="conv-messages"></div>
+    <div class="typing-indicator" id="typing-indicator">
+      <span class="dots"><span></span><span></span><span></span></span> Visitor is typing…
+    </div>
+    <div class="conv-input">
+      <input type="file" id="chat-img-input" accept="image/*" style="display:none" onchange="handleConvImage(this)">
+      <button class="icon-btn" onclick="document.getElementById('chat-img-input').click()" title="Attach image">
+        <i class="fa-solid fa-image"></i>
+      </button>
+      <textarea id="conv-text" rows="1" placeholder="Type a reply..."
+        oninput="autoGrow(this);notifyVisitorTyping()"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAdminMessage()}"></textarea>
+      <button class="icon-btn send" onclick="sendAdminMessage()" title="Send">
+        <i class="fa-solid fa-paper-plane"></i>
+      </button>
+    </div>
+  `;
+  attachMessageWatcher(chat.id);
+}
+
+function autoGrow(el) {
+  el.style.height = '42px';
+  el.style.height = Math.min(120, el.scrollHeight) + 'px';
+}
+window.autoGrow = autoGrow;
+
+/* Throttled typing notifier — when admin types, set adminTyping=true on chat doc */
+let lastTypingPing = 0;
+function notifyVisitorTyping() {
+  if (!State.selectedChatId || !db) return;
+  const now = Date.now();
+  if (now - lastTypingPing < 3000) return;
+  lastTypingPing = now;
+  db.collection('chats').doc(State.selectedChatId).set({
+    adminTyping: true,
+    adminTypingAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true }).catch(() => {});
+}
+window.notifyVisitorTyping = notifyVisitorTyping;
+
+let currentMessages = [];
+let msgUnsub = null;
+let typingUnsub = null;
+
+function attachMessageWatcher(chatId) {
+  if (msgUnsub) { try { msgUnsub(); } catch(e){} }
+  if (typingUnsub) { try { typingUnsub(); } catch(e){} }
+  currentMessages = [];
+  const msgsHost = document.getElementById('conv-messages');
+  if (msgsHost) msgsHost.innerHTML = '<div style="text-align:center;color:var(--gray);font-size:13px;padding:20px">Loading messages…</div>';
+
+  msgUnsub = db.collection('chats').doc(chatId).collection('messages')
+    .orderBy('timestamp', 'asc')
+    .onSnapshot(snap => {
+      currentMessages = [];
+      snap.forEach(d => currentMessages.push({ id: d.id, ...d.data() }));
+      renderMessages();
+      scrollConvToBottom();
+    }, err => {
+      console.warn('msgWatch err', err);
+      if (msgsHost) msgsHost.innerHTML = '<div style="text-align:center;color:var(--gray);font-size:13px;padding:20px">Could not load messages. Check Firestore rules.</div>';
+    });
+
+  // Typing indicator
+  typingUnsub = db.collection('chats').doc(chatId).onSnapshot(d => {
+    const data = d.data() || {};
+    const ind = document.getElementById('typing-indicator');
+    if (ind) {
+      const isTyping = data.visitorTyping && (Date.now() - (data.visitorTypingAt?.toMillis?.() || 0) < 5000);
+      ind.classList.toggle('show', !!isTyping);
+    }
+  });
+}
+
+function renderMessages() {
+  const host = document.getElementById('conv-messages');
+  if (!host) return;
+  if (currentMessages.length === 0) {
+    host.innerHTML = '<div style="text-align:center;color:var(--gray);font-size:13px;padding:20px">No messages yet. Say hello!</div>';
+    return;
+  }
+  host.innerHTML = currentMessages.map(m => {
+    const isAdmin = m.senderType === 'admin';
+    const ts = m.timestamp ? timeShort(m.timestamp) : '';
+    let body = escapeHtml(m.text || '');
+    if (m.attachmentUrl) {
+      const full = cloudinaryThumb(m.attachmentUrl, { q: 'auto', f: 'auto' }) || m.attachmentUrl;
+      body += `<br><img src="${escapeHtml(full)}" onclick="window.open('${escapeHtml(full)}','_blank')" style="cursor:zoom-in">`;
+    }
+    return `<div class="msg ${isAdmin ? 'admin' : 'customer'}">${body}<div class="ts">${ts}</div></div>`;
+  }).join('');
+}
+
+function scrollConvToBottom() {
+  const host = document.getElementById('conv-messages');
+  if (host) host.scrollTop = host.scrollHeight;
+}
+
+async function sendAdminMessage() {
+  const ta = document.getElementById('conv-text');
+  if (!ta) return;
+  const text = ta.value.trim();
+  if (!text || !State.selectedChatId) return;
+  ta.value = '';
+  autoGrow(ta);
+  try {
+    const chatRef = db.collection('chats').doc(State.selectedChatId);
+    await chatRef.collection('messages').add({
+      text,
+      senderType: 'admin',
+      senderEmail: State.adminUser?.email || 'admin',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await chatRef.set({
+      lastMessage: text,
+      lastSenderType: 'admin',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'active'
+    }, { merge: true });
+  } catch (err) {
+    console.error('sendAdminMessage', err);
+    toast('Could not send message. ' + (err.code || ''), 'error');
+  }
+}
+window.sendAdminMessage = sendAdminMessage;
+
+async function handleConvImage(input) {
+  const file = input.files && input.files[0];
+  if (!file || !State.selectedChatId) return;
+  input.value = '';
+  toast('Uploading image…', 'info', { duration: 0, id: 'img-upload' });
+  try {
+    // Compress to 1024px max
+    const compressed = await compressImage(file, 1024);
+    const url = await uploadToCloudinary(compressed, file.name || `chat-${Date.now()}.jpg`);
+    const chatRef = db.collection('chats').doc(State.selectedChatId);
+    await chatRef.collection('messages').add({
+      text: '',
+      attachmentUrl: url,
+      senderType: 'admin',
+      senderEmail: State.adminUser?.email || 'admin',
+      timestamp: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await chatRef.set({
+      lastMessage: '[image]',
+      lastSenderType: 'admin',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      status: 'active'
+    }, { merge: true });
+    toast('Image sent.', 'success');
+  } catch (err) {
+    console.error('img upload', err);
+    toast('Image upload failed: ' + (err.message || ''), 'error');
+  } finally {
+    document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Uploading image')) t.remove(); });
+  }
+}
+window.handleConvImage = handleConvImage;
+
+async function compressImage(file, maxDim) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) { height = Math.round(height * maxDim / width); width = maxDim; }
+        else { width = Math.round(width * maxDim / height); height = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('compress failed')), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => reject(new Error('img load failed'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function resolveChat(chatId) {
+  showConfirmModal('Mark as resolved?', 'This chat will be moved to the Resolved tab.', 'Resolve', async () => {
+    try {
+      await db.collection('chats').doc(chatId).set({
+        status: 'resolved',
+        resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      toast('Chat marked as resolved.', 'success');
+    } catch (e) {
+      console.error(e);
+      toast('Could not update chat.', 'error');
+    }
+  });
+}
+window.resolveChat = resolveChat;
+
+function attachChatHandlers() {
+  renderChatList();
+}
+
+/* ----------------------------- Leads ----------------------------- */
+function renderLeads() {
+  return `
+    <h1>Leads</h1>
+    <div class="page-sub">Contact form submissions and chat leads from the website.</div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>All leads</h2>
+        <button class="btn btn-ghost" onclick="exportLeads()"><i class="fa-solid fa-download"></i> Export CSV</button>
+      </div>
+      ${State.leads.length === 0 ? `
+        <div class="empty-state" style="padding:40px">
+          <i class="fa-regular fa-inbox"></i>
+          <h3>No leads yet</h3>
+          <p>When visitors submit the contact form or start a chat, they'll appear here.</p>
+        </div>
+      ` : `
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Email/Phone</th><th>Source</th><th>Message</th><th>Received</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${State.leads.map(l => `
+              <tr>
+                <td><strong>${escapeHtml(l.name || 'Anonymous')}</strong></td>
+                <td>${escapeHtml(l.email || l.phone || '-')}</td>
+                <td><span style="font-size:11px;padding:2px 8px;border-radius:8px;background:rgba(10,102,255,.1);color:var(--primary);font-weight:600">${escapeHtml(l.source || 'chat')}</span></td>
+                <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(l.message || '')}</td>
+                <td>${timeAgo(l.createdAt)}</td>
+                <td>
+                  <button class="btn ${l.resolved ? 'btn-ghost' : 'btn-primary'}" style="padding:6px 12px;font-size:12px"
+                    onclick="toggleLead('${l.id}')">${l.resolved ? 'Reopen' : 'Resolve'}</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+async function toggleLead(id) {
+  const lead = State.leads.find(l => l.id === id);
+  if (!lead) return;
+  try {
+    await db.collection('leads').doc(id).set({ resolved: !lead.resolved }, { merge: true });
+    toast(lead.resolved ? 'Lead reopened.' : 'Lead marked as resolved.', 'success');
+  } catch (e) {
+    toast('Could not update lead.', 'error');
+  }
+}
+window.toggleLead = toggleLead;
+
+function exportLeads() {
+  if (State.leads.length === 0) { toast('No leads to export.', 'warning'); return; }
+  const rows = [['Name', 'Email', 'Phone', 'Source', 'Message', 'Created', 'Resolved']];
+  State.leads.forEach(l => {
+    const d = l.createdAt ? (l.createdAt.toDate ? l.createdAt.toDate() : new Date(l.createdAt)) : new Date();
+    rows.push([l.name||'', l.email||'', l.phone||'', l.source||'', l.message||'', d.toISOString(), l.resolved ? 'Yes' : 'No']);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `rhc-leads-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+window.exportLeads = exportLeads;
+
+/* ----------------------------- Listings (Properties CRUD) ----------------------------- */
+function renderListings() {
+  return `
+    <h1>Properties</h1>
+    <div class="page-sub">Add, edit, and remove rental listings shown on the public site.</div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>All properties (${State.listings.length})</h2>
+        <button class="btn btn-primary" onclick="openListingModal()"><i class="fa-solid fa-plus"></i> Add property</button>
+      </div>
+      ${State.listings.length === 0 ? `
+        <div class="empty-state" style="padding:40px">
+          <i class="fa-regular fa-building"></i>
+          <h3>No properties yet</h3>
+          <p>Click "Add property" to create your first listing. Until then, the public site will show its built-in sample listings.</p>
+        </div>
+      ` : `
+        <table class="data-table">
+          <thead>
+            <tr><th></th><th>Address</th><th>City</th><th>Price</th><th>Beds</th><th>Baths</th><th>Sqft</th><th>Type</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${State.listings.map(l => `
+              <tr>
+                <td>${l.images && l.images[0] ? `<img class="thumb" src="${escapeHtml(cloudinaryThumb(l.images[0], {w:120,h:80,c:'fill',q:'auto'}) || l.images[0])}">` : ''}</td>
+                <td><strong>${escapeHtml(l.address || '-')}</strong></td>
+                <td>${escapeHtml(l.city || '-')}, ${escapeHtml(l.state || '')}</td>
+                <td>$${(l.price || 0).toLocaleString()}</td>
+                <td>${l.beds || '-'}</td>
+                <td>${l.baths || '-'}</td>
+                <td>${(l.sqft || 0).toLocaleString()}</td>
+                <td>${escapeHtml(l.type || '-')}</td>
+                <td>
+                  <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="openListingModal('${l.id}')"><i class="fa-solid fa-pen"></i></button>
+                  <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteListing('${l.id}')"><i class="fa-solid fa-trash"></i></button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function openListingModal(id) {
+  const listing = id ? State.listings.find(l => l.id === id) : null;
+  const root = document.getElementById('modal-root');
+  root.innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card">
+        <h3>${listing ? 'Edit property' : 'Add new property'}</h3>
+        <div class="modal-sub">Fill in the details below. Required fields are marked with *.</div>
+        <form id="listing-form" onsubmit="event.preventDefault();saveListing('${id || ''}')">
+          <div class="form-grid">
+            <div class="form-field">
+              <label>Address *</label>
+              <input id="f-address" required value="${escapeHtml(listing?.address || '')}" placeholder="123 Main St">
+            </div>
+            <div class="form-field">
+              <label>City *</label>
+              <select id="f-city" required>
+                <option value="">Pick city…</option>
+                ${State.cities.map(c => `<option value="${escapeHtml(c.city)}" ${listing?.city === c.city ? 'selected' : ''}>${escapeHtml(c.city)}, ${escapeHtml(c.state)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label>State</label>
+              <input id="f-state" value="${escapeHtml(listing?.state || '')}" placeholder="CA">
+            </div>
+            <div class="form-field">
+              <label>ZIP</label>
+              <input id="f-zip" value="${escapeHtml(listing?.zip || '')}" placeholder="90210">
+            </div>
+            <div class="form-field">
+              <label>Price ($/mo) *</label>
+              <input id="f-price" type="number" required value="${listing?.price || ''}" placeholder="2500">
+            </div>
+            <div class="form-field">
+              <label>Beds</label>
+              <input id="f-beds" type="number" value="${listing?.beds || 2}" min="0">
+            </div>
+            <div class="form-field">
+              <label>Baths</label>
+              <input id="f-baths" type="number" step="0.5" value="${listing?.baths || 2}" min="0">
+            </div>
+            <div class="form-field">
+              <label>Sqft</label>
+              <input id="f-sqft" type="number" value="${listing?.sqft || 1200}" min="0">
+            </div>
+            <div class="form-field">
+              <label>Type</label>
+              <select id="f-type">
+                ${['House', 'Townhouse', 'Condo', 'Apartment', 'Studio'].map(t => `<option ${listing?.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Year built</label>
+              <input id="f-year" type="number" value="${listing?.yearBuilt || 2000}" min="1900" max="2026">
+            </div>
+            <div class="form-field">
+              <label>Pets</label>
+              <select id="f-pets">
+                ${['Cats & Dogs', 'Cats Only', 'Dogs Only', 'No Pets'].map(t => `<option ${listing?.pets === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field">
+              <label>Parking</label>
+              <input id="f-parking" value="${escapeHtml(listing?.parking || 'Street + permit')}">
+            </div>
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>Amenities (comma-separated)</label>
+            <input id="f-amenities" value="${escapeHtml((listing?.amenities || []).join(', '))}" placeholder="Central AC, Garage, EV Charger">
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>Description</label>
+            <textarea id="f-desc" placeholder="Beautiful home in a great neighborhood...">${escapeHtml(listing?.description || '')}</textarea>
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>Images (URLs, one per line)</label>
+            <textarea id="f-images" placeholder="https://res.cloudinary.com/...">${escapeHtml((listing?.images || []).join('\n'))}" style="min-height:80px;font-family:monospace;font-size:12px"></textarea>
+            <div style="display:flex;gap:8px;margin-top:6px">
+              <button type="button" class="btn btn-ghost" style="padding:6px 12px;font-size:11px" onclick="uploadListingImages('${id || ''}')"><i class="fa-solid fa-upload"></i> Upload images</button>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">${listing ? 'Save changes' : 'Add property'}</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+}
+
+async function uploadListingImages(id) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+  input.onchange = async () => {
+    const files = Array.from(input.files || []);
+    if (files.length === 0) return;
+    toast(`Uploading ${files.length} image(s)…`, 'info', { duration: 0, id: 'imgup' });
+    const urls = [];
+    try {
+      for (const f of files) {
+        const comp = await compressImage(f, 1280);
+        const url = await uploadToCloudinary(comp, f.name || `property-${Date.now()}.jpg`);
+        urls.push(url);
+      }
+      const ta = document.getElementById('f-images');
+      const existing = ta.value.trim();
+      ta.value = (existing ? existing + '\n' : '') + urls.join('\n');
+      toast(`${urls.length} image(s) uploaded.`, 'success');
+    } catch (e) {
+      toast('Upload failed: ' + (e.message || ''), 'error');
+    } finally {
+      document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Uploading')) t.remove(); });
+    }
+  };
+  input.click();
+}
+window.uploadListingImages = uploadListingImages;
+
+async function saveListing(id) {
+  const data = {
+    address: document.getElementById('f-address').value.trim(),
+    city: document.getElementById('f-city').value.trim(),
+    state: document.getElementById('f-state').value.trim(),
+    zip: document.getElementById('f-zip').value.trim(),
+    price: parseInt(document.getElementById('f-price').value) || 0,
+    beds: parseInt(document.getElementById('f-beds').value) || 0,
+    baths: parseFloat(document.getElementById('f-baths').value) || 0,
+    sqft: parseInt(document.getElementById('f-sqft').value) || 0,
+    type: document.getElementById('f-type').value,
+    yearBuilt: parseInt(document.getElementById('f-year').value) || null,
+    pets: document.getElementById('f-pets').value,
+    parking: document.getElementById('f-parking').value.trim(),
+    amenities: document.getElementById('f-amenities').value.split(',').map(s => s.trim()).filter(Boolean),
+    description: document.getElementById('f-desc').value.trim(),
+    images: document.getElementById('f-images').value.split('\n').map(s => s.trim()).filter(Boolean),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  try {
+    if (id) {
+      await db.collection('listings').doc(id).set(data, { merge: true });
+      toast('Property updated.', 'success');
+    } else {
+      data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+      await db.collection('listings').add(data);
+      toast('Property added.', 'success');
+    }
+    closeModal();
+  } catch (err) {
+    console.error('saveListing', err);
+    toast('Could not save property: ' + (err.code || err.message), 'error');
+  }
+}
+window.saveListing = saveListing;
+window.openListingModal = openListingModal;
+
+function deleteListing(id) {
+  showConfirmModal('Delete property?', 'This cannot be undone.', 'Delete', async () => {
+    try {
+      await db.collection('listings').doc(id).delete();
+      toast('Property deleted.', 'success');
+    } catch (e) {
+      toast('Could not delete: ' + (e.code || ''), 'error');
+    }
+  });
+}
+window.deleteListing = deleteListing;
+
+/* ----------------------------- Cities ----------------------------- */
+function renderCities() {
+  return `
+    <h1>Cities</h1>
+    <div class="page-sub">Manage which cities appear in the homepage carousel.</div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Active cities (${State.cities.length})</h2>
+        <button class="btn btn-primary" onclick="openCityModal()"><i class="fa-solid fa-plus"></i> Add city</button>
+      </div>
+      ${State.cities.length === 0 ? `
+        <div class="empty-state" style="padding:40px">
+          <i class="fa-regular fa-city"></i>
+          <h3>No cities yet</h3>
+          <p>The public site will fall back to its built-in list of 34 cities. Add cities here to override.</p>
+        </div>
+      ` : `
+        <table class="data-table">
+          <thead><tr><th>City</th><th>State</th><th>Listings</th><th>Added</th><th></th></tr></thead>
+          <tbody>
+            ${State.cities.map(c => `
+              <tr>
+                <td><strong>${escapeHtml(c.city)}</strong></td>
+                <td>${escapeHtml(c.state)}</td>
+                <td>${State.listings.filter(l => l.city === c.city).length}</td>
+                <td>${timeAgo(c.createdAt)}</td>
+                <td>
+                  <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteCity('${c.id}')"><i class="fa-solid fa-trash"></i></button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function openCityModal() {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal-card" style="max-width:420px">
+        <h3>Add city</h3>
+        <div class="modal-sub">Add a city to the homepage carousel.</div>
+        <form onsubmit="event.preventDefault();saveCity()">
+          <div class="form-field">
+            <label>City name *</label>
+            <input id="c-city" required placeholder="Austin">
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>State (2-letter) *</label>
+            <input id="c-state" required placeholder="TX" maxlength="2" style="text-transform:uppercase">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+            <button type="submit" class="btn btn-primary">Add city</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+}
+window.openCityModal = openCityModal;
+
+async function saveCity() {
+  const city = document.getElementById('c-city').value.trim();
+  const state = document.getElementById('c-state').value.trim().toUpperCase();
+  if (!city || !state) return;
+  try {
+    await db.collection('cities').add({
+      city, state,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    toast('City added.', 'success');
+    closeModal();
+  } catch (e) {
+    toast('Could not add city: ' + (e.code || ''), 'error');
+  }
+}
+window.saveCity = saveCity;
+
+function deleteCity(id) {
+  showConfirmModal('Remove city?', 'The city will no longer appear in the carousel.', 'Remove', async () => {
+    try {
+      await db.collection('cities').doc(id).delete();
+      toast('City removed.', 'success');
+    } catch (e) {
+      toast('Could not remove: ' + (e.code || ''), 'error');
+    }
+  });
+}
+window.deleteCity = deleteCity;
+
+/* ----------------------------- Images ----------------------------- */
+function renderImages() {
+  return `
+    <h1>Image Manager</h1>
+    <div class="page-sub">Upload images to Cloudinary. Copy the URL to use in property listings.</div>
+    <div class="panel">
+      <div class="upload-zone" id="upload-zone"
+           onclick="document.getElementById('img-input').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="event.preventDefault();this.classList.remove('drag-over');handleImageUpload(event.dataTransfer.files)">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+        <h4>Drop images here or click to upload</h4>
+        <p>JPG, PNG, WebP — up to 10 at a time. Stored in your Cloudinary account.</p>
+      </div>
+      <input type="file" id="img-input" accept="image/*" multiple style="display:none" onchange="handleImageUpload(this.files)">
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>Your images (${State.images.length})</h2>
+      </div>
+      ${State.images.length === 0 ? `
+        <div class="empty-state" style="padding:30px">
+          <i class="fa-regular fa-image"></i>
+          <h3>No images uploaded yet</h3>
+          <p>Upload some images above — they'll be stored in Cloudinary and listed here for easy URL copying.</p>
+        </div>
+      ` : `
+        <div class="image-grid">
+          ${State.images.map(img => `
+            <div class="image-card">
+              <img src="${escapeHtml(cloudinaryThumb(img.url, {w:240,h:160,c:'fill',q:'auto'}) || img.url)}" loading="lazy">
+              <div class="info">
+                <div class="url">${escapeHtml(img.url)}</div>
+                <div class="actions">
+                  <button class="copy" onclick="copyToClipboard('${escapeHtml(img.url)}')"><i class="fa-solid fa-copy"></i> Copy URL</button>
+                  <button class="del" onclick="deleteImageRecord('${img.id}')"><i class="fa-solid fa-trash"></i></button>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+async function handleImageUpload(files) {
+  const arr = Array.from(files || []);
+  if (arr.length === 0) return;
+  if (arr.length > 10) { toast('Max 10 images at a time.', 'warning'); return; }
+  toast(`Uploading ${arr.length} image(s)…`, 'info', { duration: 0, id: 'batchup' });
+  let ok = 0, fail = 0;
+  for (const f of arr) {
+    try {
+      const comp = await compressImage(f, 1280);
+      const url = await uploadToCloudinary(comp, f.name || `rhc-${Date.now()}.jpg`);
+      await db.collection('images').add({
+        url, name: f.name || '',
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      ok++;
+    } catch (e) {
+      console.warn('img upload fail', e);
+      fail++;
+    }
+  }
+  document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Uploading')) t.remove(); });
+  toast(`Uploaded ${ok}/${arr.length}${fail ? `, ${fail} failed` : ''}.`, fail ? 'warning' : 'success');
+  // Reset input so the same file can be re-uploaded
+  const inp = document.getElementById('img-input');
+  if (inp) inp.value = '';
+}
+window.handleImageUpload = handleImageUpload;
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    toast('URL copied to clipboard.', 'success');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('URL copied.', 'success');
+  });
+}
+window.copyToClipboard = copyToClipboard;
+
+function deleteImageRecord(id) {
+  showConfirmModal('Remove image record?', 'The image stays in Cloudinary but disappears from this list.', 'Remove', async () => {
+    try {
+      await db.collection('images').doc(id).delete();
+      toast('Image record removed.', 'success');
+    } catch (e) {
+      toast('Could not remove: ' + (e.code || ''), 'error');
+    }
+  });
+}
+window.deleteImageRecord = deleteImageRecord;
+
+/* ----------------------------- Settings ----------------------------- */
+function renderSettings() {
+  const b = State.branding || {};
+  return `
+    <h1>Settings</h1>
+    <div class="page-sub">Branding, contact info, and social media handles.</div>
+    <div class="panel">
+      <div class="panel-header"><h2>Branding</h2></div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label>Brand name</label>
+          <input id="s-brandText" value="${escapeHtml(b.brandText || '')}" placeholder="Rental Home Connect">
+        </div>
+        <div class="form-field">
+          <label>Logo URL</label>
+          <input id="s-logoUrl" value="${escapeHtml(b.logoUrl || '')}" placeholder="https://res.cloudinary.com/...">
+        </div>
+        <div class="form-field">
+          <label>Contact email</label>
+          <input id="s-email" value="${escapeHtml(b.email || 'rentalhomeconnects@gmail.com')}">
+        </div>
+        <div class="form-field">
+          <label>Contact phone</label>
+          <input id="s-phone" value="${escapeHtml(b.phone || '')}" placeholder="+1 (555) 000-0000">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn btn-ghost" onclick="uploadBrandingLogo()"><i class="fa-solid fa-upload"></i> Upload logo</button>
+        <button class="btn btn-primary" onclick="saveBranding()" style="margin-left:auto"><i class="fa-solid fa-floppy-disk"></i> Save branding</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Social media</h2></div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label><i class="fa-brands fa-tiktok"></i> Main TikTok</label>
+          <input id="s-tiktok" value="${escapeHtml(b.tiktok || '_rentalhomeconnects')}">
+        </div>
+        <div class="form-field">
+          <label><i class="fa-brands fa-tiktok"></i> Agent handles (comma-separated)</label>
+          <input id="s-tiktokAgents" value="${escapeHtml(b.tiktokAgents || '_christopherhayes, _ethanhayes1')}">
+        </div>
+        <div class="form-field">
+          <label><i class="fa-brands fa-instagram"></i> Instagram</label>
+          <input id="s-instagram" value="${escapeHtml(b.instagram || '')}">
+        </div>
+        <div class="form-field">
+          <label><i class="fa-brands fa-facebook"></i> Facebook</label>
+          <input id="s-facebook" value="${escapeHtml(b.facebook || '')}">
+        </div>
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn-primary" onclick="saveSocial()"><i class="fa-solid fa-floppy-disk"></i> Save social</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><h2>Site URL</h2></div>
+      <p style="font-size:14px;color:var(--gray)">Public site: <a href="https://rental-home-connect.vercel.app" target="_blank" style="color:var(--primary);text-decoration:underline">rental-home-connect.vercel.app</a></p>
+    </div>
+  `;
+}
+
+async function saveBranding() {
+  const data = {
+    brandText: document.getElementById('s-brandText').value.trim(),
+    logoUrl: document.getElementById('s-logoUrl').value.trim(),
+    email: document.getElementById('s-email').value.trim(),
+    phone: document.getElementById('s-phone').value.trim()
+  };
+  try {
+    await db.collection('settings').doc('branding').set(data, { merge: true });
+    State.branding = { ...State.branding, ...data };
+    applyBrandingToDocument();
+    toast('Branding saved.', 'success');
+  } catch (e) {
+    toast('Could not save: ' + (e.code || ''), 'error');
+  }
+}
+window.saveBranding = saveBranding;
+
+async function saveSocial() {
+  const data = {
+    tiktok: document.getElementById('s-tiktok').value.trim(),
+    tiktokAgents: document.getElementById('s-tiktokAgents').value.trim(),
+    instagram: document.getElementById('s-instagram').value.trim(),
+    facebook: document.getElementById('s-facebook').value.trim()
+  };
+  try {
+    await db.collection('settings').doc('social').set(data, { merge: true });
+    State.branding = { ...State.branding, ...data };
+    toast('Social settings saved.', 'success');
+  } catch (e) {
+    toast('Could not save: ' + (e.code || ''), 'error');
+  }
+}
+window.saveSocial = saveSocial;
+
+async function uploadBrandingLogo() {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = 'image/*';
+  input.onchange = async () => {
+    const f = input.files && input.files[0];
+    if (!f) return;
+    toast('Uploading logo…', 'info', { duration: 0, id: 'logoup' });
+    try {
+      const comp = await compressImage(f, 512);
+      const url = await uploadToCloudinary(comp, 'rhc-logo-' + Date.now() + '.png');
+      document.getElementById('s-logoUrl').value = url;
+      toast('Logo uploaded. Click "Save branding" to apply.', 'success');
+    } catch (e) {
+      toast('Upload failed: ' + (e.message || ''), 'error');
+    } finally {
+      document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Uploading logo')) t.remove(); });
+    }
+  };
+  input.click();
+}
+window.uploadBrandingLogo = uploadBrandingLogo;
+
+function applyBrandingToDocument() {
+  const b = State.branding || {};
+  if (b.brandText) {
+    document.title = `${b.brandText} — Staff Portal`;
+    const brandNameEl = document.querySelector('.brand-name');
+    if (brandNameEl) brandNameEl.textContent = b.brandText;
+  }
+  if (b.logoUrl) {
+    const shield = document.getElementById('brand-shield');
+    if (shield) shield.innerHTML = `<img src="${escapeHtml(b.logoUrl)}" alt="logo" style="width:100%;height:100%;object-fit:contain">`;
+    const loginLogo = document.getElementById('login-logo');
+    if (loginLogo) {
+      loginLogo.classList.add('has-img');
+      loginLogo.innerHTML = `<img src="${escapeHtml(b.logoUrl)}" alt="logo">`;
+    }
+  }
+}
+
+/* ----------------------------- Admin Watchers ----------------------------- */
+function startAdminWatchers() {
+  // Chats list
+  if (State.unsubChatsList) { try { State.unsubChatsList(); } catch(e){} }
+  State.unsubChatsList = db.collection('chats')
+    .orderBy('updatedAt', 'desc')
+    .onSnapshot(snap => {
+      State.chats = [];
+      snap.forEach(d => State.chats.push({ id: d.id, ...d.data() }));
+      // Update nav badge
+      const waitingCount = State.chats.filter(c => (c.status || 'waiting') === 'waiting').length;
+      const badge = document.getElementById('nav-chats-badge');
+      if (badge) {
+        badge.textContent = waitingCount;
+        badge.classList.toggle('hidden', waitingCount === 0);
+      }
+      // Re-render list if visible
+      if (State.view === 'chats') renderChatList();
+      // Re-render dashboard if visible
+      if (State.view === 'dashboard') renderView();
+    }, err => console.warn('chats list err', err));
+
+  // Listings
+  if (State.unsubListings) { try { State.unsubListings(); } catch(e){} }
+  State.unsubListings = db.collection('listings')
+    .onSnapshot(snap => {
+      State.listings = [];
+      snap.forEach(d => State.listings.push({ id: d.id, ...d.data() }));
+      if (State.view === 'listings' || State.view === 'dashboard') renderView();
+    }, err => console.warn('listings err', err));
+
+  // Cities
+  if (State.unsubCities) { try { State.unsubCities(); } catch(e){} }
+  State.unsubCities = db.collection('cities')
+    .onSnapshot(snap => {
+      State.cities = [];
+      snap.forEach(d => State.cities.push({ id: d.id, ...d.data() }));
+      if (State.view === 'cities' || State.view === 'dashboard' || State.view === 'listings') renderView();
+    }, err => console.warn('cities err', err));
+
+  // Images
+  if (State.unsubImages) { try { State.unsubImages(); } catch(e){} }
+  State.unsubImages = db.collection('images')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      State.images = [];
+      snap.forEach(d => State.images.push({ id: d.id, ...d.data() }));
+      if (State.view === 'images' || State.view === 'dashboard') renderView();
+    }, err => console.warn('images err', err));
+
+  // Leads
+  if (State.unsubLeads) { try { State.unsubLeads(); } catch(e){} }
+  State.unsubLeads = db.collection('leads')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      State.leads = [];
+      snap.forEach(d => State.leads.push({ id: d.id, ...d.data() }));
+      const unresolved = State.leads.filter(l => !l.resolved).length;
+      const badge = document.getElementById('nav-leads-badge');
+      if (badge) {
+        badge.textContent = unresolved;
+        badge.classList.toggle('hidden', unresolved === 0);
+      }
+      if (State.view === 'leads' || State.view === 'dashboard') renderView();
+    }, err => console.warn('leads err', err));
+
+  // Branding
+  if (State.unsubBranding) { try { State.unsubBranding(); } catch(e){} }
+  State.unsubBranding = db.collection('settings').doc('branding').onSnapshot(d => {
+    if (d.exists) {
+      State.branding = { ...State.branding, ...d.data() };
+      applyBrandingToDocument();
+    }
+  });
+  // Social
+  if (State.unsubSocial) { try { State.unsubSocial(); } catch(e){} }
+  State.unsubSocial = db.collection('settings').doc('social').onSnapshot(d => {
+    if (d.exists) {
+      State.branding = { ...State.branding, ...d.data() };
+      if (State.view === 'settings') renderView();
+    }
+  });
+}
+
+/* ----------------------------- Init ----------------------------- */
+async function init() {
+  // Load branding first so login screen has logo
+  try {
+    const doc = await db.collection('settings').doc('branding').get();
+    if (doc.exists) State.branding = { ...State.branding, ...doc.data() };
+  } catch (e) { console.warn('branding load', e); }
+  try {
+    const doc = await db.collection('settings').doc('social').get();
+    if (doc.exists) State.branding = { ...State.branding, ...doc.data() };
+  } catch (e) { console.warn('social load', e); }
+
+  auth.onAuthStateChanged(async user => {
+    if (user) {
+      // Check admin
+      try {
+        const userDoc = await db.collection('users').doc(user.uid).get();
+        if (userDoc.exists && userDoc.data().isAdmin === true) {
+          State.isAdmin = true;
+          State.adminUser = { uid: user.uid, email: user.email, lastLogin: new Date() };
+          localStorage.setItem('rhc_admin', JSON.stringify(State.adminUser));
+          renderAdmin();
+          startAdminWatchers();
+          return;
+        }
+      } catch (e) { console.warn('auth check', e); }
+      // Not admin — sign out and show login
+      await auth.signOut();
+    }
+    renderLogin();
+  });
+}
+
+init();
+window.closeModal = closeModal;
+</script>
+</body>
+</html>
