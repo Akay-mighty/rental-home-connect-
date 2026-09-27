@@ -491,7 +491,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
 /* Reused from the support wallet project. Unsigned client-side upload. */
 const CLOUDINARY = {
   cloudName: 'dfd1bgdam',
-  uploadPreset: 'musk_chat_unsigned',
+  uploadPreset: 'rental_home_connect',
   folder: 'rhc-properties'
 };
 window.CLOUDINARY = CLOUDINARY;
@@ -1279,6 +1279,7 @@ function renderListings() {
     <div class="panel">
       <div class="panel-header">
         <h2>All properties (${State.listings.length})</h2>
+        <button class="btn btn-ghost" onclick="importListings()" style="margin-right:8px"><i class="fa-solid fa-download"></i> Import sample listings</button>
         <button class="btn btn-primary" onclick="openListingModal()"><i class="fa-solid fa-plus"></i> Add property</button>
       </div>
       ${State.listings.length === 0 ? `
@@ -1470,6 +1471,115 @@ async function saveListing(id) {
 }
 window.saveListing = saveListing;
 window.openListingModal = openListingModal;
+
+
+/* FIX #9: Import existing sample listings into Firestore so admin can edit them */
+async function importListings() {
+  showConfirmModal('Import sample listings?', 'This will add 102 sample listings (3 per city x 34 cities) to Firestore. You can then edit or replace them one by one with your real listings.', 'Import', async () => {
+    toast('Importing 102 sample listings...', 'info', { duration: 0, id: 'import-toast' });
+    
+    // Replicate the React bundle's K0() algorithm
+    const Bl = [
+      {city:"Los Angeles",state:"CA"},{city:"San Francisco",state:"CA"},{city:"San Diego",state:"CA"},
+      {city:"Austin",state:"TX"},{city:"Dallas",state:"TX"},{city:"Houston",state:"TX"},
+      {city:"Miami",state:"FL"},{city:"Orlando",state:"FL"},{city:"Tampa",state:"FL"},
+      {city:"Atlanta",state:"GA"},{city:"Nashville",state:"TN"},{city:"Denver",state:"CO"},
+      {city:"Phoenix",state:"AZ"},{city:"Seattle",state:"WA"},{city:"Portland",state:"OR"},
+      {city:"Chicago",state:"IL"},{city:"New York",state:"NY"},{city:"Boston",state:"MA"},
+      {city:"Philadelphia",state:"PA"},{city:"Detroit",state:"MI"},{city:"Minneapolis",state:"MN"},
+      {city:"Las Vegas",state:"NV"},{city:"New Orleans",state:"LA"},{city:"Charlotte",state:"NC"},
+      {city:"Raleigh",state:"NC"},{city:"Columbus",state:"OH"},{city:"Indianapolis",state:"IN"},
+      {city:"Kansas City",state:"MO"},{city:"St Louis",state:"MO"},{city:"Salt Lake City",state:"UT"},
+      {city:"Washington",state:"DC"},{city:"Baltimore",state:"MD"},{city:"San Antonio",state:"TX"},
+      {city:"Jacksonville",state:"FL"}
+    ];
+    const of_streets = ["Maple Ave","Cedar Ln","Ocean Dr","Palm Blvd","Hillside Rd","Parkview St","Lakewood Dr","Sunset Blvd","Willow Creek Ln","Highland Ave","Elm St","Walnut Ridge","Magnolia Ct","Riverwalk Dr"];
+    const H0_zips = {CA:"90",TX:"75",FL:"32",GA:"30",TN:"37",CO:"80",AZ:"85",WA:"98",OR:"97",IL:"60",NY:"10",MA:"02",PA:"19",MI:"48",MN:"55",NV:"89",LA:"70",NC:"27",OH:"43",IN:"46",MO:"64",UT:"84",DC:"20",MD:"21"};
+    const Cn_images = [
+      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600585154154-2017c38d5d9d?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600607688969-a5bfcd646154?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600585154084-4e5fe7c39198?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600573472550-8090b5e0745b?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600210492493-0946911123ea?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600047509782-20d39509f26d?w=1200&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600047509358-9dc75507daeb?w=1200&q=80&auto=format&fit=crop"
+    ];
+
+    let imported = 0, failed = 0;
+    const batch = db.batch();
+    let n = 0;
+    
+    Bl.forEach((t) => {
+      for (let r = 0; r < 3; r++) {
+        const street = of_streets[(t.city.length + r * 7) % of_streets.length];
+        const num = 1000 + (t.city.charCodeAt(0) * 13 + r * 271) % 7800;
+        const zip = (H0_zips[t.state] || "10") + String(100 + (t.city.length * 17 + r * 53) % 900).padStart(3, "0");
+        const address = num + " " + street;
+        const price = Math.round((2800 + (t.city.charCodeAt(0) * 29 + r * 557) % 4400) / 50) * 50;
+        const beds = 2 + (r + t.city.length) % 4;
+        const baths = 1 + (r * 2 + t.city.length) % 4;
+        const sqft = 900 + ((t.city.charCodeAt(1) || 65) * 11 + r * 333) % 2300;
+        const types = ["House", "Townhouse", "Condo"];
+        const type = types[(r + t.city.length) % 3];
+        const images = [
+          Cn_images[n++ % Cn_images.length],
+          Cn_images[n++ % Cn_images.length],
+          Cn_images[n++ % Cn_images.length],
+          Cn_images[n++ % Cn_images.length]
+        ];
+        const amenities = ["Central AC", "In-unit Laundry", "Hardwood Floors", "Stainless Appliances", "Walk-in Closet", "Private Patio", "Garage", "EV Charger"].slice(0, 4 + r % 3);
+        const pets = ["Cats & Dogs", "Cats Only", "No Pets"][(r + t.city.length) % 3];
+        const parking = r === 0 ? "2-car garage" : r === 1 ? "1-car garage + driveway" : "Street + permit";
+
+        const listingId = t.city.toLowerCase().replace(/ /g, "-") + "-" + t.state.toLowerCase() + "-" + (r + 1);
+        const listingData = {
+          id: listingId,
+          address: address,
+          city: t.city,
+          state: t.state,
+          zip: zip,
+          price: price,
+          beds: beds,
+          baths: Math.min(4, Math.max(1, baths)),
+          sqft: sqft,
+          type: type,
+          images: images,
+          amenities: amenities,
+          description: "Stunning " + type.toLowerCase() + " in the heart of " + t.city + ". Floor-to-ceiling windows, chef's kitchen with quartz, and a serene primary suite with spa bath. Walk to parks, cafes, and transit. Available now with flexible lease terms.",
+          yearBuilt: 1998 + r * 7 % 26,
+          pets: pets,
+          parking: parking,
+          isSample: true,
+          importedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+        
+        const ref = db.collection('listings').doc(listingId);
+        batch.set(ref, listingData, { merge: true });
+      }
+    });
+
+    try {
+      await batch.commit();
+      toast('Imported 102 sample listings! You can now edit them below.', 'success', { duration: 5000 });
+    } catch (err) {
+      console.error('importListings', err);
+      toast('Could not import listings: ' + (err.code || err.message), 'error', { duration: 5000 });
+    } finally {
+      document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Importing')) t.remove(); });
+    }
+  });
+}
+window.importListings = importListings;
 
 function deleteListing(id) {
   showConfirmModal('Delete property?', 'This cannot be undone.', 'Delete', async () => {
