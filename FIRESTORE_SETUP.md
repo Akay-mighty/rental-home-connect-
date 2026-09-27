@@ -1,8 +1,8 @@
-# Rental Home Connect — Firestore Setup Guide
+# Rental Home Connect — Firebase + Cloudinary Setup
 
-## 1. Firestore Security Rules
+## 1. Firestore Security Rules (UPDATED for renter auth)
 
-Paste these into **Firebase Console → Firestore → Rules tab**:
+Paste into **Firebase Console → Firestore → Rules tab**:
 
 ```
 rules_version = '2';
@@ -15,21 +15,33 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // Users — only the user themselves or an admin can read
+    // Admin users (staff)
     match /users/{uid} {
       allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
       allow create: if isSignedIn() && request.auth.uid == uid;
       allow update, delete: if isAdmin();
     }
 
-    // Chats — visitors create their own, anyone signed-in can read their own, admin reads all
+    // RENTER profiles (separate from admin users)
+    match /renters/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() && request.auth.uid == uid;
+      allow delete: if isSignedIn() && request.auth.uid == uid;
+
+      // Saved homes subcollection
+      match /saved/{listingId} {
+        allow read: if isSignedIn() && request.auth.uid == uid;
+        allow create, delete: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Chats — visitors create their own, admin reads all
     match /chats/{chatId} {
       allow read: if isSignedIn() && (resource.data.visitorUid == request.auth.uid || isAdmin());
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (resource.data.visitorUid == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
 
-      // Messages subcollection
       match /messages/{msgId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn();
@@ -37,7 +49,7 @@ service cloud.firestore {
       }
     }
 
-    // Listings, cities, images — public read, admin write
+    // Public data — anyone can read
     match /listings/{id} {
       allow read: if true;
       allow write: if isAdmin();
@@ -52,79 +64,71 @@ service cloud.firestore {
     }
     match /leads/{id} {
       allow read: if isAdmin();
-      allow create: if true;  // visitors can submit forms
+      allow create: if true;
       allow update, delete: if isAdmin();
     }
     match /settings/{docId} {
-      allow read: if true;     // public site reads branding/social
+      allow read: if true;
       allow write: if isAdmin();
     }
   }
 }
 ```
 
-## 2. Create the Admin User
+## 2. Enable Auth Providers (CRITICAL — new for renter auth)
 
-### Step 1 — Create the Firebase Auth user
-1. Go to **Firebase Console → Authentication → Users → Add user**
+1. **Firebase Console → Authentication → Sign-in method**
+2. Enable these providers:
+   - **Email/Password** → toggle Enable → Save
+   - **Google** → toggle Enable → select your project support email → Save
+   - **Anonymous** → toggle Enable → Save (for visitor chat)
+3. Add your domain `rental-home-connect.vercel.app` to **Authorized domains** (Authentication → Settings → Authorized domains)
+
+## 3. Create the Admin User (staff login)
+
+### Step 1 — Create in Firebase Auth
+1. **Authentication → Users → Add user**
 2. Email: `kingfache@rental.com`
 3. Password: `fache123`
-4. Click **Add user**
-5. **Copy the User UID** that appears in the user list (long string like `kS5yy1GpdFc3...`)
+4. Click **Add user**, then **copy the User UID**
 
-### Step 2 — Add the admin flag in Firestore
-1. Go to **Firestore Database → Data**
-2. Click **+ Start collection** (or open existing `users` collection)
-3. Collection ID: `users`
-4. Document ID: *(paste the UID from step 1)*
-5. Add field:
-   - Field: `email`
-   - Type: `string`
-   - Value: `kingfache@rental.com`
-6. Add another field:
-   - Field: `isAdmin`
-   - Type: `boolean`
-   - Value: `true`
-7. Click **Save**
+### Step 2 — Add admin flag in Firestore
+1. **Firestore Database → Data → Start collection** (or open `users`)
+2. Collection ID: `users`
+3. Document ID: *(paste the UID from step 1)*
+4. Add fields:
+   - `email` (string) = `kingfache@rental.com`
+   - `isAdmin` (boolean) = `true`
+5. **Save**
 
-### Step 3 — Test login
-1. Open `admin.html` in a browser
-2. Sign in with `kingfache@rental.com` / `fache123`
-3. You should land in the dashboard.
+## 4. Cloudinary Setup (IMPORTANT — preset is missing!)
 
-## 3. Enable Anonymous Auth (for visitor chat)
+I verified via a test upload — **the upload preset `musk_chat_unsigned` does NOT exist on cloud `dfd1bgdam`**. This is why image uploads in the chat were failing with "Upload preset not found."
 
-1. Firebase Console → **Authentication → Sign-in method**
-2. Click **Anonymous**
-3. Toggle **Enable** → Save
+The chat widget now **falls back to Firebase Storage automatically** if Cloudinary fails — so images will work either way. But to use Cloudinary (which has better CDN performance and image optimization), create the preset:
 
-This lets the chat widget auto-sign-in visitors so they get a `uid` before they even type their name.
+1. Log into your **Cloudinary dashboard** (https://cloudinary.com/console)
+2. Confirm the cloud name is `dfd1bgdam` (top-right of dashboard)
+3. **Settings → Upload → Upload presets**
+4. Click **"Add upload preset"**
+5. Set:
+   - **Name**: `musk_chat_unsigned`
+   - **Signing Mode**: **Unsigned** ← critical
+   - **Folder**: `rhc-chat` (optional)
+6. Click **Save**
 
-## 4. Cloudinary Setup
+Now Cloudinary uploads will work. If you don't create the preset, images still upload successfully via Firebase Storage (same Firebase project, no extra setup).
 
-The admin dashboard reuses the Cloudinary account from the support wallet project:
-- Cloud name: `dfd1bgdam`
-- Upload preset: `musk_chat_unsigned` (must be **unsigned**)
-
-To verify or create the preset:
-1. Log into Cloudinary dashboard
-2. Settings → Upload → Upload presets
-3. Find `musk_chat_unsigned` (or create it: Signing mode = **Unsigned**, Folder = `rhc-properties` or `chat-images`)
-4. Save
-
-## 5. Public site URL
-
-The admin dashboard links back to your public site at:
-- **https://rental-home-connect.vercel.app**
-
-## 6. Files
+## 5. Files
 
 - `index.html` — public site (deploy to Vercel)
-- `admin.html` — staff portal (deploy alongside index.html on Vercel)
-- `FIRESTORE_SETUP.md` — this file
+- `admin.html` — staff portal (deploy alongside)
+- `vercel.json` — `/admin` → `/admin.html` rewrite
+- `README.md` — quick-start guide
 
-## 7. Deploy
+## 6. Deploy
 
-1. Upload both `index.html` and `admin.html` to your Vercel project (or git push to your repo)
-2. Once deployed, the public site is at `rental-home-connect.vercel.app` and the admin at `rental-home-connect.vercel.app/admin.html`
-3. Triple-click the logo on the public site to open the admin login
+1. Push all files to your GitHub repo (Akay-mighty/rental-home-connect-)
+2. Vercel auto-redeploys in ~30s
+3. Public site: `rental-home-connect.vercel.app`
+4. Admin: `rental-home-connect.vercel.app/admin`
