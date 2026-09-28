@@ -1655,8 +1655,27 @@ Error generating stack: `+o.message+`
               '</div>' +
             '</div>' +
             '<button class="rhc-agent-btn" style="width:100%;margin-top:12px;padding:14px;justify-content:center" onclick="RHC.contactAgent(\'' + escapeHtml(listing.address) + '\')">' + SVG.chat + ' Contact Agent</button>' +
+            '<div id="rhc-tour-scheduler" style="margin-top:16px;background:#fff;border:1px solid #E8E2D9;border-radius:14px;padding:18px">' +
+              '<div style="font-weight:700;color:#1A1A18;font-size:15px;margin-bottom:4px">Schedule a tour</div>' +
+              '<div style="font-size:12px;color:#64748B;margin-bottom:14px">Pick a date and time to visit this property.</div>' +
+              '<div style="margin-bottom:12px">' +
+                '<label style="display:block;font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Date</label>' +
+                '<input type="date" id="rhc-tour-date" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #E8E2D9;font-size:14px;background:#fff" min="' + new Date().toISOString().split('T')[0] + '">' +
+              '</div>' +
+              '<div style="margin-bottom:14px">' +
+                '<label style="display:block;font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Time slot</label>' +
+                '<select id="rhc-tour-time" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid #E8E2D9;font-size:14px;background:#fff">' +
+                  '<option value="Morning (9am-12pm)">Morning (9am-12pm)</option>' +
+                  '<option value="Afternoon (12pm-4pm)">Afternoon (12pm-4pm)</option>' +
+                  '<option value="Evening (4pm-7pm)">Evening (4pm-7pm)</option>' +
+                '</select>' +
+              '</div>' +
+              '<button class="rhc-agent-btn" style="width:100%;padding:12px;justify-content:center" onclick="RHC.scheduleTour(\'' + escapeHtml(listing.address) + '\')">' +
+                '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 4h-1V2h-2v2H8V2H6v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"/></svg>' +
+                ' Schedule Tour</button>' +
+            '</div>' +
             '<div style="margin-top:16px;background:#F5F1EB;border-radius:12px;padding:14px;font-size:13px;color:#64748B">' +
-              '<strong style="color:#1A1A18">Quick apply:</strong> Most tenants hear back within 2 minutes during business hours. Chat live with our team to schedule a tour.' +
+              '<strong style="color:#1A1A18">Quick apply:</strong> Most tenants hear back within 2 minutes during business hours.' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -1754,6 +1773,29 @@ Error generating stack: `+o.message+`
     if (fab && !chatOpen) fab.click();
     setTimeout(function() {
       var msg = "Hi, I'm interested in " + address + ". Is it still available? I'd like to schedule a tour.";
+      prefillChat(msg);
+      if (RHC.currentChatId) sendVisitorMessage(msg);
+    }, 400);
+  };
+
+  // Schedule Tour: reads date + time from the detail page, opens chat with pre-filled message
+  RHC.scheduleTour = function(address) {
+    var dateInput = document.getElementById('rhc-tour-date');
+    var timeSelect = document.getElementById('rhc-tour-time');
+    if (!dateInput || !dateInput.value) {
+      toast('Please pick a date for your tour.');
+      return;
+    }
+    var date = dateInput.value;
+    var time = timeSelect ? timeSelect.value : 'Morning (9am-12pm)';
+    // Format the date nicely
+    var dateObj = new Date(date + 'T00:00:00');
+    var formattedDate = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    RHC.closeDetail();
+    var fab = document.querySelector('.rhc-chat-fab');
+    if (fab && !chatOpen) fab.click();
+    setTimeout(function() {
+      var msg = "Hi! I'd like to schedule a tour of " + address + " on " + formattedDate + " — " + time + ". What times are available?";
       prefillChat(msg);
       if (RHC.currentChatId) sendVisitorMessage(msg);
     }, 400);
