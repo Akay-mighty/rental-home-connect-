@@ -229,7 +229,11 @@ Error generating stack: `+o.message+`
     var st = document.createElement('style');
     st.id = 'rhc-base-styles';
     st.textContent = [
-      // Toast
+      // Hide the React bundle's footer (copyright + Equal Housing) — we inject our own at the very bottom
+    'footer{display:none !important;}',
+    '.rhc-copyright-footer{padding:20px 16px;background:#FFFCF8;border-top:1px solid #E8E2D9;text-align:center;font-size:12px;color:#64748B;font-family:Inter,sans-serif;}',
+    '.rhc-copyright-footer .badge{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:9999px;background:#F5F1EB;border:1px solid #E8E2D9;font-size:11px;color:#1A1A18;}',
+    // Toast
       '.rhc-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1A1A18;color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;font-weight:500;z-index:99999;font-family:Inter,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:rhcToastIn .25s ease;}',
       '@keyframes rhcToastIn{from{opacity:0;transform:translate(-50%,-12px)}to{opacity:1;transform:translate(-50%,0)}}',
       '@keyframes rhcSpin{to{transform:rotate(360deg)}}',
@@ -465,6 +469,9 @@ Error generating stack: `+o.message+`
       '.rhc-mobile-tabbar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #E8E2D9;display:none;justify-content:space-around;align-items:center;padding:8px 0;z-index:9990;font-family:Inter,sans-serif;}',
       '.rhc-mobile-tabbar button{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:2px;color:#1A1A18;font-size:11px;font-weight:500;cursor:pointer;padding:6px 14px;}',
       '.rhc-mobile-tabbar button.active{color:#0A66FF;}',
+    'footer{display:none !important;}',
+    '.rhc-copyright-footer{padding:20px 16px;background:#FFFCF8;border-top:1px solid #E8E2D9;text-align:center;font-size:12px;color:#64748B;font-family:Inter,sans-serif;}',
+    '.rhc-copyright-footer .badge{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:9999px;background:#F5F1EB;border:1px solid #E8E2D9;font-size:11px;color:#1A1A18;}',
       '.rhc-mobile-tabbar button svg{width:22px;height:22px;}',
       '@media (max-width:767px){.rhc-mobile-tabbar{display:flex;}body.rhc-mobile-tabbar-active{padding-bottom:64px;}}',
       // Footer contact block
@@ -527,9 +534,7 @@ Error generating stack: `+o.message+`
       '.rhc-carousels-host{max-width:1600px;margin:0 auto;padding:0 16px 24px;font-family:Inter,sans-serif;}',
       '.rhc-carousels-host h2{font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px;}',
       '.rhc-carousels-host .sub{font-size:14px;color:#64748B;margin-bottom:24px;}',
-      '.rhc-carousel-row{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;' +
-        // FIX C6: scroll-snap-type:x proximity (gentler, doesn't force snap)
-        'scroll-snap-type:x proximity;}',
+      '.rhc-carousel-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding-bottom:8px;}',
       // Other houses
       '.rhc-other-host{max-width:1600px;margin:0 auto;padding:0 16px 24px;font-family:Inter,sans-serif;}',
       '.rhc-other-host h2{font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px;}',
@@ -812,7 +817,7 @@ Error generating stack: `+o.message+`
 
   // ============ Skeleton renderers (FIX B7) ============
   function skeletonCardHtml(widthStyle) {
-    return '<div class="rhc-skeleton-card" style="' + (widthStyle || 'flex:0 0 280px') + '">' +
+    return '<div class="rhc-skeleton-card" style="' + (widthStyle || 'width:100%') + '">' +
       '<div class="sk-img"></div>' +
       '<div class="sk-line mid"></div>' +
       '<div class="sk-line short"></div>' +
@@ -830,7 +835,7 @@ Error generating stack: `+o.message+`
       html += '<span style="font-size:13px;color:#64748B;flex-shrink:0">Loading…</span>';
       html += '</div>';
       html += '<div class="rhc-carousel-row">';
-      for (var i = 0; i < 3; i++) html += skeletonCardHtml('flex:0 0 280px');
+      for (var i = 0; i < 3; i++) html += skeletonCardHtml('width:100%');
       html += '</div></div>';
     });
     carouselHost.innerHTML = html;
@@ -856,7 +861,7 @@ Error generating stack: `+o.message+`
   function listingCardHtml(h, isCarousel) {
     // FIX D11: use listing image (with type-specific fallback) instead of just images[0]
     var img = listingImage(h, 0);
-    var widthStyle = isCarousel ? 'flex:0 0 280px;' : '';
+    var widthStyle = isCarousel ? 'width:100%;' : '';
     var cardStyle = widthStyle + 'background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;' + (isCarousel ? 'scroll-snap-align:start;' : '');
     var html = '<div class="rhc-listing-card" data-rhc-listing-id="' + escapeHtml(h.id || '') + '" style="' + cardStyle + '" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.boxShadow=\'0 12px 32px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
     html += '<div style="height:180px;background:#F5F1EB;overflow:hidden;position:relative">';
@@ -904,7 +909,7 @@ Error generating stack: `+o.message+`
         } else {
           // Show 3 skeletons instead of empty message
           html += '<div class="rhc-carousel-row">';
-          for (var i = 0; i < 3; i++) html += skeletonCardHtml('flex:0 0 280px');
+          for (var i = 0; i < 3; i++) html += skeletonCardHtml('width:100%');
           html += '</div>';
         }
       } else {
@@ -3083,6 +3088,14 @@ Error generating stack: `+o.message+`
       parent.appendChild(block);
     }
     updateFooterContact();
+    // Inject copyright footer at the very bottom (after contact-us)
+    if (!document.getElementById('rhc-copyright-footer')) {
+      var cf = document.createElement('div');
+      cf.id = 'rhc-copyright-footer';
+      cf.className = 'rhc-copyright-footer';
+      cf.innerHTML = '&copy; ' + new Date().getFullYear() + ' Rental Home Connect. All rights reserved.<br><span class="badge">Equal Housing Opportunity</span>';
+      block.parentElement.appendChild(cf);
+    }
     return true;
   }
 
