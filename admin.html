@@ -1342,7 +1342,7 @@ function openListingModal(id) {
       <div class="modal-card">
         <h3>${listing ? 'Edit property' : 'Add new property'}</h3>
         <div class="modal-sub">Fill in the details below. Required fields are marked with *.</div>
-        <form id="listing-form" onsubmit="event.preventDefault();saveListing('${id || ''}')">
+        <form id="listing-form" onsubmit="event.preventDefault();return false;">
           <div class="form-grid">
             <div class="form-field">
               <label>Address *</label>
@@ -1350,10 +1350,14 @@ function openListingModal(id) {
             </div>
             <div class="form-field">
               <label>City *</label>
-              <select id="f-city" required>
-                <option value="">Pick city…</option>
-                ${State.cities.map(c => `<option value="${escapeHtml(c.city)}" ${listing?.city === c.city ? 'selected' : ''}>${escapeHtml(c.city)}, ${escapeHtml(c.state)}</option>`).join('')}
-              </select>
+              <input id="f-city" required value="${escapeHtml(listing?.city || '')}" placeholder="e.g. New York" list="rhc-city-list">
+              <datalist id="rhc-city-list">
+                ${Array.from(new Set(State.listings.map(l => l.city + '||' + l.state))).map(cs => {
+                  var parts = cs.split('||');
+                  return '<option value="' + escapeHtml(parts[0]) + '">' + escapeHtml(parts[0]) + ', ' + escapeHtml(parts[1]||'') + '</option>';
+                }).join('')}
+                ${State.cities.map(c => '<option value="' + escapeHtml(c.city) + '">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</option>').join('')}
+              </datalist>
             </div>
             <div class="form-field">
               <label>State</label>
@@ -1441,11 +1445,11 @@ function openListingModal(id) {
             <input id="f-img4" value="${escapeHtml(listing?.images?.[3] || '')}" placeholder="https://...">
             <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px" onclick="uploadSingleImage(4)"><i class="fa-solid fa-upload"></i> Upload</button>
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-            <button type="submit" class="btn btn-primary">${listing ? 'Save changes' : 'Add property'}</button>
-          </div>
         </form>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveListing('${id || ''}')">${listing ? 'Save changes' : 'Add property'}</button>
+        </div>
       </div>
     </div>`;
 }

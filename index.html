@@ -842,7 +842,8 @@ Error generating stack: `+o.message+`
     html += '<p class="sub">Loading rentals across the country…</p>';
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
     for (var i = 0; i < 6; i++) html += skeletonCardHtml('');
-    html += '</div>';
+    html += '</div>'; // close grid
+    html += '</div>'; // close box
     otherHousesHost.innerHTML = html;
   }
 
@@ -3060,32 +3061,27 @@ Error generating stack: `+o.message+`
 
   function injectFooterContact() {
     if (document.getElementById('rhc-footer-contact-host')) { updateFooterContact(); return true; }
-    // FIX C8: insert contact us BELOW testimonials, above footer
-    var insertBefore = null;
+    // Contact us MUST go AFTER testimonials. If testimonials don't exist yet, wait.
     var testimonials = document.getElementById('rhc-testimonials');
-    if (testimonials) {
-      insertBefore = testimonials.nextElementSibling;
-      // Skip other RHC-injected sections to find the right spot
-      while (insertBefore && (insertBefore.id === 'rhc-reco-block' || insertBefore.id === 'rhc-mobile-tabbar')) {
-        insertBefore = insertBefore.nextElementSibling;
-      }
+    if (!testimonials) return false; // Try again on next tick
+    // Insert AFTER testimonials (before whatever comes next)
+    var insertBefore = testimonials.nextElementSibling;
+    // Skip other RHC sections to find the right spot
+    while (insertBefore && (insertBefore.id === 'rhc-reco-block' || insertBefore.id === 'rhc-mobile-tabbar' || insertBefore.id === 'rhc-footer-contact-host')) {
+      insertBefore = insertBefore.nextElementSibling;
     }
-    if (!insertBefore) {
-      var footer = document.querySelector('footer') || (function() {
-        var divs = document.querySelectorAll('div');
-        for (var i = divs.length - 1; i >= 0; i--) {
-          if (((divs[i].className || '') + (divs[i].id || '')).toLowerCase().indexOf('footer') >= 0) return divs[i];
-        }
-        return null;
-      })();
-      insertBefore = footer;
-    }
-    if (!insertBefore) return false;
+    // If nothing after testimonials, append to parent
+    var parent = testimonials.parentElement;
+    if (!insertBefore) insertBefore = null; // appendChild instead
     var block = document.createElement('div');
     block.id = 'rhc-footer-contact-host';
     block.className = 'rhc-footer-contact-host';
     block.innerHTML = '<h3>Contact us</h3><div id="rhc-footer-contact"></div>';
-    insertBefore.parentElement.insertBefore(block, insertBefore);
+    if (insertBefore) {
+      parent.insertBefore(block, insertBefore);
+    } else {
+      parent.appendChild(block);
+    }
     updateFooterContact();
     return true;
   }
@@ -3095,11 +3091,13 @@ Error generating stack: `+o.message+`
     injectBaseStyles();
     // Build chat widget early so visitors see the FAB immediately
     showChatWidget();
-    // Inject static sections eagerly; the interval will retry until they stick
+    // Inject static sections — ORDER MATTERS:
+    // 1. Testimonials FIRST (so contact-us can find them)
+    // 2. Footer contact SECOND (inserts AFTER testimonials)
     injectAccountButton();
-    injectTestimonials();
     injectRecommendationsBlock();
     injectMobileTabBar();
+    injectTestimonials();
     injectFooterContact();
     // FIX E13: wire up Terms/Privacy links on every page load
     setupTermsAndPrivacyLinks();
