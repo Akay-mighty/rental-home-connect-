@@ -491,7 +491,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
 /* Reused from the support wallet project. Unsigned client-side upload. */
 const CLOUDINARY = {
   cloudName: 'dbmtqgs3v',
-  uploadPreset: 'rental_home_connect',
+  uploadPreset: 'rental home connect',
   folder: 'rhc-properties'
 };
 window.CLOUDINARY = CLOUDINARY;
@@ -764,6 +764,12 @@ function renderAdmin() {
         <div class="nav-item ${State.view==='images'?'active':''}" onclick="setView('images')">
           <i class="fa-solid fa-images"></i> Image Manager
         </div>
+        <div class="nav-item ${State.view==='applications'?'active':''}" onclick="setView('applications')">
+          <i class="fa-solid fa-file-signature"></i> Applications
+        </div>
+        <div class="nav-item ${State.view==='applications'?'active':''}" onclick="setView('applications')">
+          <i class="fa-solid fa-file-signature"></i> Applications
+        </div>
         <div class="nav-item ${State.view==='settings'?'active':''}" onclick="setView('settings')">
           <i class="fa-solid fa-gear"></i> Settings
         </div>
@@ -811,7 +817,9 @@ function renderView() {
     case 'listings': host.innerHTML = renderListings(); break;
     case 'cities': host.innerHTML = renderCities(); break;
     case 'images': host.innerHTML = renderImages(); break;
-    case 'settings': host.innerHTML = renderSettings(); break;
+    case 'applications': host.innerHTML = renderApplications(); break;
+      case 'applications': host.innerHTML = renderApplications(); break;
+      case 'settings': host.innerHTML = renderSettings(); break;
     default: host.innerHTML = renderDashboard();
   }
 }
@@ -1279,8 +1287,11 @@ function renderListings() {
     <div class="panel">
       <div class="panel-header">
         <h2>All properties (${State.listings.length})</h2>
-        <button class="btn btn-ghost" onclick="importListings()" style="margin-right:8px"><i class="fa-solid fa-download"></i> Import sample listings</button>
-        <button class="btn btn-primary" onclick="openListingModal()"><i class="fa-solid fa-plus"></i> Add property</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="cleanupAndSeed()"><i class="fa-solid fa-broom"></i> Clean up & reseed</button>
+          <button class="btn btn-ghost" id="bulk-delete-btn" onclick="bulkDeleteSelected()" style="display:none"><i class="fa-solid fa-trash"></i> Delete selected (<span id="selected-count">0</span>)</button>
+          <button class="btn btn-primary" onclick="openListingModal()"><i class="fa-solid fa-plus"></i> Add property</button>
+        </div>
       </div>
       ${State.listings.length === 0 ? `
         <div class="empty-state" style="padding:40px">
@@ -1291,11 +1302,12 @@ function renderListings() {
       ` : `
         <table class="data-table">
           <thead>
-            <tr><th></th><th>Address</th><th>City</th><th>Price</th><th>Beds</th><th>Baths</th><th>Sqft</th><th>Type</th><th></th></tr>
+            <tr><th><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this.checked)"></th><th></th><th>Address</th><th>City</th><th>Price</th><th>Beds</th><th>Baths</th><th>Sqft</th><th>Type</th><th></th></tr>
           </thead>
           <tbody>
             ${State.listings.map(l => `
-              <tr>
+              <tr data-listing-id="${l.id}">
+                <td><input type="checkbox" class="listing-checkbox" value="${l.id}" onchange="updateSelectedCount()"></td>
                 <td>${l.images && l.images[0] ? `<img class="thumb" src="${escapeHtml(cloudinaryThumb(l.images[0], {w:120,h:80,c:'fill',q:'auto'}) || l.images[0])}">` : ''}</td>
                 <td><strong>${escapeHtml(l.address || '-')}</strong></td>
                 <td>${escapeHtml(l.city || '-')}, ${escapeHtml(l.state || '')}</td>
@@ -1395,7 +1407,7 @@ function openListingModal(id) {
             <label>Placement</label>
             <select id="f-placement">
               <option value="other" ${listing?.placement !== 'showcase' ? 'selected' : ''}>Other houses (general grid)</option>
-              <option value="showcase" ${listing?.placement === 'showcase' ? 'selected' : ''}>Showcase (horizontal scroll — NYC/LA only)</option>
+              <option value="showcase" ${listing?.placement === 'showcase' ? 'selected' : ''}>Showcase (horizontal scroll - NYC/LA only)</option>
             </select>
           </div>
           <div class="form-field" style="margin-top:14px">
@@ -1405,7 +1417,7 @@ function openListingModal(id) {
             </label>
           </div>
           <div class="form-field" style="margin-top:14px">
-            <label>Image 1 (Cover — shown on cards) *</label>
+            <label>Image 1 (Cover - shown on cards) *</label>
             <input id="f-img1" value="${escapeHtml(listing?.images?.[0] || '')}" placeholder="https://...">
             <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px" onclick="uploadSingleImage(1)"><i class="fa-solid fa-upload"></i> Upload</button>
           </div>
@@ -1465,16 +1477,15 @@ async function saveListing(id) {
     beds: parseInt(document.getElementById('f-beds').value) || 0,
     baths: parseFloat(document.getElementById('f-baths').value) || 0,
     sqft: parseInt(document.getElementById('f-sqft').value) || 0,
-    placement: document.getElementById('f-placement').value,
-    showOnMap: document.getElementById('f-showonmap').checked,
-    images: [1,2,3,4].map(function(n) { return document.getElementById('f-img'+n).value.trim(); }).filter(Boolean),
     type: document.getElementById('f-type').value,
     yearBuilt: parseInt(document.getElementById('f-year').value) || null,
     pets: document.getElementById('f-pets').value,
     parking: document.getElementById('f-parking').value.trim(),
     amenities: document.getElementById('f-amenities').value.split(',').map(s => s.trim()).filter(Boolean),
     description: document.getElementById('f-desc').value.trim(),
-
+    placement: document.getElementById('f-placement').value,
+    showOnMap: document.getElementById('f-showonmap').checked,
+    images: [1,2,3,4].map(function(n) { return document.getElementById('f-img'+n).value.trim(); }).filter(Boolean),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
   try {
@@ -1496,102 +1507,190 @@ window.saveListing = saveListing;
 window.openListingModal = openListingModal;
 
 
-/* FIX #9: Import existing sample listings into Firestore so admin can edit them */
-async function importListings() {
-  showConfirmModal('Import sample listings?', 'This will create 38 listings: 3 showcase in NYC, 3 showcase in LA, and 1 per remaining city. All prices $500-$3,500/mo. You can edit or replace them anytime.', 'Import', async () => {
-    toast('Importing 38 sample listings...', 'info', { duration: 0, id: 'import-toast' });
-
-    const ALL_CITIES = [
-      {city:"New York",state:"NY"},{city:"Los Angeles",state:"CA"},
-      {city:"Chicago",state:"IL"},{city:"Houston",state:"TX"},{city:"Phoenix",state:"AZ"},
-      {city:"Philadelphia",state:"PA"},{city:"San Antonio",state:"TX"},{city:"San Diego",state:"CA"},
-      {city:"Dallas",state:"TX"},{city:"Austin",state:"TX"},{city:"Jacksonville",state:"FL"},
-      {city:"Columbus",state:"OH"},{city:"Charlotte",state:"NC"},{city:"San Francisco",state:"CA"},
-      {city:"Indianapolis",state:"IN"},{city:"Seattle",state:"WA"},{city:"Denver",state:"CO"},
-      {city:"Washington",state:"DC"},{city:"Boston",state:"MA"},{city:"El Paso",state:"TX"},
-      {city:"Nashville",state:"TN"},{city:"Detroit",state:"MI"},{city:"Oklahoma City",state:"OK"},
-      {city:"Portland",state:"OR"},{city:"Las Vegas",state:"NV"},{city:"Memphis",state:"TN"},
-      {city:"Louisville",state:"KY"},{city:"Baltimore",state:"MD"},{city:"Milwaukee",state:"WI"},
-      {city:"Albuquerque",state:"NM"},{city:"Tucson",state:"AZ"},{city:"Fresno",state:"CA"},
-      {city:"Sacramento",state:"CA"},{city:"Mesa",state:"AZ"},{city:"Atlanta",state:"GA"},
-      {city:"Miami",state:"FL"},{city:"Tampa",state:"FL"},{city:"Orlando",state:"FL"}
-    ];
-    const STREETS = ["Maple Ave","Cedar Ln","Ocean Dr","Palm Blvd","Hillside Rd","Parkview St","Lakewood Dr","Sunset Blvd","Willow Creek Ln","Highland Ave","Elm St","Walnut Ridge","Magnolia Ct","Riverwalk Dr"];
-    const IMAGES = [
-      "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600047509807-ba8f99d2cdde?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600585154526-990dced4db0d?w=800&q=70&auto=format&fit=crop",
-      "https://images.unsplash.com/photo-1600585154154-2017c38d5d9d?w=800&q=70&auto=format&fit=crop"
-    ];
-
-    const batch = db.batch();
-    let n = 0;
-
-    ALL_CITIES.forEach((c, cityIdx) => {
-      const isShowcase = (c.city === 'New York' || c.city === 'Los Angeles');
-      const numHouses = isShowcase ? 3 : 1;
-
-      for (let r = 0; r < numHouses; r++) {
-        const street = STREETS[(cityIdx + r * 7) % STREETS.length];
-        const num = 100 + ((cityIdx * 17 + r * 53) % 900);
-        // FIX #4: Prices between $500 and $3,500
-        const price = 500 + ((cityIdx * 37 + r * 113) % 3000);
-        const priceRounded = Math.round(price / 50) * 50;
-        const beds = 1 + (cityIdx + r) % 4;
-        const baths = 1 + (cityIdx + r * 2) % 3;
-        const sqft = 500 + ((cityIdx * 23 + r * 97) % 1500);
-        const types = ["House","Townhouse","Condo"];
-        const type = types[(cityIdx + r) % 3];
-        const imgs = [
-          IMAGES[n++ % IMAGES.length],
-          IMAGES[n++ % IMAGES.length],
-          IMAGES[n++ % IMAGES.length],
-          IMAGES[n++ % IMAGES.length]
-        ];
-        const amenities = ["Central AC","In-unit Laundry","Hardwood Floors","Stainless Appliances","Walk-in Closet","Private Patio","Garage","EV Charger"].slice(0, 3 + r % 3);
-        const pets = ["Cats & Dogs","Cats Only","No Pets"][(cityIdx + r) % 3];
-        const parking = r === 0 ? "2-car garage" : r === 1 ? "1-car garage + driveway" : "Street + permit";
-        const listingId = c.city.toLowerCase().replace(/ /g, "-") + "-" + c.state.toLowerCase() + "-" + (r + 1);
-
-        batch.set(db.collection('listings').doc(listingId), {
-          id: listingId,
-          address: num + " " + street,
-          city: c.city, state: c.state,
-          zip: String(10000 + cityIdx * 137 + r * 53),
-          price: priceRounded,
-          beds: beds, baths: baths, sqft: sqft,
-          type: type,
-          images: imgs,
-          amenities: amenities,
-          description: "Beautiful " + type.toLowerCase() + " in " + c.city + ". Spacious layout with modern finishes, natural light throughout, and easy access to local amenities. Available now with flexible lease terms.",
-          yearBuilt: 1995 + (cityIdx + r) % 28,
-          pets: pets,
-          parking: parking,
-          placement: isShowcase ? 'showcase' : 'other',
-          showOnMap: true,
-          isSample: true,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      }
-    });
-
+// A4: Bulk delete
+let selectedListingIds = new Set();
+window.toggleSelectAll = function(checked) {
+  document.querySelectorAll('.listing-checkbox').forEach(function(cb) { cb.checked = checked; });
+  selectedListingIds = new Set();
+  if (checked) {
+    document.querySelectorAll('.listing-checkbox').forEach(function(cb) { selectedListingIds.add(cb.value); });
+  }
+  updateSelectedCount();
+};
+window.updateSelectedCount = function() {
+  selectedListingIds = new Set();
+  document.querySelectorAll('.listing-checkbox:checked').forEach(function(cb) { selectedListingIds.add(cb.value); });
+  const n = selectedListingIds.size;
+  const countEl = document.getElementById('selected-count');
+  const btn = document.getElementById('bulk-delete-btn');
+  if (countEl) countEl.textContent = n;
+  if (btn) btn.style.display = n > 0 ? '' : 'none';
+};
+window.bulkDeleteSelected = function() {
+  const n = selectedListingIds.size;
+  if (n === 0) return;
+  showConfirmModal('Delete ' + n + ' listing' + (n > 1 ? 's' : '') + '?', 'This cannot be undone. The listing(s) will be permanently removed from Firestore.', 'Delete ' + n + ' listing' + (n > 1 ? 's' : ''), async () => {
+    toast('Deleting ' + n + ' listing(s)...', 'info');
     try {
+      const batch = db.batch();
+      selectedListingIds.forEach(function(id) { batch.delete(db.collection('listings').doc(id)); });
       await batch.commit();
-      toast('Imported 38 sample listings! All are editable below.', 'success', { duration: 5000 });
+      toast('Deleted ' + n + ' listing(s).', 'success');
+      selectedListingIds.clear();
+      updateSelectedCount();
+      const selectAll = document.getElementById('select-all-checkbox');
+      if (selectAll) selectAll.checked = false;
+    } catch (e) {
+      toast('Could not delete: ' + (e.code || ''), 'error');
+    }
+  });
+};
+
+
+// A1-3: Cleanup and reseed — wipes ALL listings, writes 38 fresh realistic ones
+async function cleanupAndSeed() {
+  showConfirmModal('Clean up and reseed listings?', 'This will DELETE ALL existing listings and create 38 fresh ones (3 NYC showcase + 3 LA showcase + 1 per other city). All prices $500-$3,500 with realistic addresses. This cannot be undone.', 'Delete & Reseed', async () => {
+    toast('Cleaning up old listings...', 'info', { duration: 0, id: 'seed-toast' });
+    try {
+      // Step 1: Delete ALL existing listings
+      const existingSnap = await db.collection('listings').get();
+      const deleteBatch = db.batch();
+      existingSnap.forEach(function(doc) { deleteBatch.delete(doc.ref); });
+      await deleteBatch.commit();
+      console.log('Deleted', existingSnap.size, 'old listings');
+
+      // Step 2: Seed 38 fresh listings with realistic data
+      const SEED_DATA = [
+        {city:"New York",state:"NY",address:"1247 Bedford Ave",zip:"11216",price:3200,beds:2,baths:1,sqft:850,type:"Apartment",showcase:true},
+        {city:"New York",state:"NY",address:"88 N 7th Ave",zip:"11249",price:2800,beds:1,baths:1,sqft:650,type:"Studio",showcase:true},
+        {city:"New York",state:"NY",address:"350 W 42nd St",zip:"10036",price:3500,beds:2,baths:2,sqft:1100,type:"Condo",showcase:true},
+        {city:"Los Angeles",state:"CA",address:"1634 Sunset Blvd",zip:"90026",price:2900,beds:2,baths:1,sqft:900,type:"Apartment",showcase:true},
+        {city:"Los Angeles",state:"CA",address:"7428 Sunset Blvd",zip:"90046",price:2500,beds:1,baths:1,sqft:700,type:"Studio",showcase:true},
+        {city:"Los Angeles",state:"CA",address:"1180 San Vicente Blvd",zip:"90049",price:3300,beds:3,baths:2,sqft:1400,type:"Condo",showcase:true},
+        {city:"Chicago",state:"IL",address:"1234 N Clark St",zip:"60610",price:2100,beds:2,baths:1,sqft:900,type:"Apartment"},
+        {city:"Houston",state:"TX",address:"4517 Westheimer Rd",zip:"77027",price:1800,beds:2,baths:2,sqft:1100,type:"Townhouse"},
+        {city:"Phoenix",state:"AZ",address:"2345 E Camelback Rd",zip:"85016",price:1600,beds:2,baths:2,sqft:1000,type:"Apartment"},
+        {city:"Philadelphia",state:"PA",address:"1900 Chestnut St",zip:"19103",price:1900,beds:1,baths:1,sqft:750,type:"Apartment"},
+        {city:"San Antonio",state:"TX",address:"123 E Travis St",zip:"78205",price:1500,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"San Diego",state:"CA",address:"456 Garnet Ave",zip:"92109",price:2400,beds:2,baths:1,sqft:800,type:"Apartment"},
+        {city:"Dallas",state:"TX",address:"2815 McKinney Ave",zip:"75204",price:2000,beds:2,baths:2,sqft:1050,type:"Townhouse"},
+        {city:"Austin",state:"TX",address:"1100 W Lynn St",zip:"78703",price:2300,beds:2,baths:1,sqft:900,type:"Apartment"},
+        {city:"Jacksonville",state:"FL",address:"1235 Beach Blvd",zip:"32250",price:1400,beds:2,baths:2,sqft:1000,type:"House"},
+        {city:"Columbus",state:"OH",address:"456 N High St",zip:"43215",price:1300,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"Charlotte",state:"NC",address:"789 E 7th St",zip:"28202",price:1700,beds:2,baths:2,sqft:1050,type:"Townhouse"},
+        {city:"San Francisco",state:"CA",address:"1234 Valencia St",zip:"94110",price:3200,beds:1,baths:1,sqft:600,type:"Studio"},
+        {city:"Indianapolis",state:"IN",address:"456 Massachusetts Ave",zip:"46204",price:1200,beds:2,baths:1,sqft:800,type:"Apartment"},
+        {city:"Seattle",state:"WA",address:"2345 1st Ave",zip:"98121",price:2600,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"Denver",state:"CO",address:"1567 Larimer St",zip:"80202",price:2200,beds:2,baths:2,sqft:950,type:"Apartment"},
+        {city:"Washington",state:"DC",address:"456 14th St NW",zip:"20005",price:2800,beds:1,baths:1,sqft:700,type:"Studio"},
+        {city:"Boston",state:"MA",address:"789 Commonwealth Ave",zip:"02215",price:3000,beds:2,baths:1,sqft:800,type:"Apartment"},
+        {city:"El Paso",state:"TX",address:"1234 N Mesa St",zip:"79902",price:1100,beds:2,baths:2,sqft:950,type:"House"},
+        {city:"Nashville",state:"TN",address:"456 Demonbreun St",zip:"37203",price:1800,beds:2,baths:2,sqft:1000,type:"Townhouse"},
+        {city:"Detroit",state:"MI",address:"789 Woodward Ave",zip:"48226",price:900,beds:2,baths:1,sqft:750,type:"Apartment"},
+        {city:"Oklahoma City",state:"OK",address:"1234 N Robinson Ave",zip:"73103",price:1000,beds:2,baths:2,sqft:900,type:"House"},
+        {city:"Portland",state:"OR",address:"456 NW 23rd Ave",zip:"97210",price:2100,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"Las Vegas",state:"NV",address:"789 Fremont St",zip:"89101",price:1500,beds:2,baths:2,sqft:1000,type:"Apartment"},
+        {city:"Memphis",state:"TN",address:"1234 Union Ave",zip:"38104",price:800,beds:2,baths:1,sqft:800,type:"House"},
+        {city:"Louisville",state:"KY",address:"456 Bardstown Rd",zip:"40204",price:1100,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"Baltimore",state:"MD",address:"789 Charles St",zip:"21201",price:1600,beds:2,baths:1,sqft:800,type:"Apartment"},
+        {city:"Milwaukee",state:"WI",address:"1234 E Brady St",zip:"53202",price:1200,beds:2,baths:1,sqft:750,type:"Apartment"},
+        {city:"Albuquerque",state:"NM",address:"456 Central Ave SE",zip:"87102",price:950,beds:2,baths:2,sqft:900,type:"House"},
+        {city:"Tucson",state:"AZ",address:"789 E Broadway Blvd",zip:"85719",price:850,beds:2,baths:1,sqft:800,type:"Apartment"},
+        {city:"Fresno",state:"CA",address:"1234 N Van Ness Ave",zip:"93728",price:1300,beds:2,baths:2,sqft:950,type:"House"},
+        {city:"Sacramento",state:"CA",address:"456 J St",zip:"95814",price:1700,beds:2,baths:1,sqft:850,type:"Apartment"},
+        {city:"Mesa",state:"AZ",address:"789 E Main St",zip:"85203",price:1200,beds:2,baths:2,sqft:1000,type:"House"},
+        {city:"Atlanta",state:"GA",address:"1234 Peachtree St NE",zip:"30309",price:2000,beds:2,baths:2,sqft:1100,type:"Apartment"},
+        {city:"Miami",state:"FL",address:"456 Ocean Dr",zip:"33139",price:2700,beds:1,baths:1,sqft:650,type:"Studio"},
+        {city:"Tampa",state:"FL",address:"789 Bayshore Blvd",zip:"33611",price:1800,beds:2,baths:2,sqft:1050,type:"Apartment"},
+        {city:"Orlando",state:"FL",address:"1234 E Washington St",zip:"32801",price:1600,beds:2,baths:1,sqft:850,type:"Apartment"}
+      ];
+
+      const IMAGES = [
+        "https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1493809842364-78817add7ffb?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=70&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1600566753086-00f18fb6b3ea?w=800&q=70&auto=format&fit=crop"
+      ];
+      const AMENITIES = ["Central AC","In-unit Laundry","Hardwood Floors","Stainless Appliances","Walk-in Closet","Private Patio","Garage","EV Charger"];
+      const PETS = ["Cats & Dogs","Cats Only","No Pets"];
+      const PARKING = ["2-car garage","1-car garage + driveway","Street + permit","Assigned parking"];
+
+      const writeBatch = db.batch();
+      let n = 0;
+      SEED_DATA.forEach(function(item, idx) {
+        const listingId = item.city.toLowerCase().replace(/ /g, "-") + "-" + item.state.toLowerCase() + "-" + (item.showcase ? ("showcase-" + (idx + 1)) : "1");
+        const imgs = [IMAGES[n++ % IMAGES.length], IMAGES[n++ % IMAGES.length], IMAGES[n++ % IMAGES.length], IMAGES[n++ % IMAGES.length]];
+        writeBatch.set(db.collection('listings').doc(listingId), {
+          id: listingId, address: item.address, city: item.city, state: item.state, zip: item.zip,
+          price: item.price, beds: item.beds, baths: item.baths, sqft: item.sqft, type: item.type,
+          images: imgs, amenities: AMENITIES.slice(0, 3 + (idx % 4)),
+          description: "Beautiful " + item.type.toLowerCase() + " at " + item.address + " in " + item.city + ", " + item.state + ". " + item.beds + " bed, " + item.baths + " bath, " + item.sqft + " sqft.",
+          yearBuilt: 1995 + (idx * 3) % 28, pets: PETS[idx % 3], parking: PARKING[idx % 4],
+          placement: item.showcase ? 'showcase' : 'other', showOnMap: true, isSample: true,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      });
+      await writeBatch.commit();
+      toast('Cleanup complete! Created 38 realistic listings.', 'success', { duration: 5000 });
     } catch (err) {
-      console.error('importListings', err);
-      toast('Could not import: ' + (err.code || err.message), 'error', { duration: 5000 });
+      console.error('cleanupAndSeed', err);
+      toast('Could not complete: ' + (err.code || err.message), 'error', { duration: 5000 });
     } finally {
-      document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Importing')) t.remove(); });
+      document.querySelectorAll('.toast').forEach(t => { if (t.textContent.includes('Cleaning up')) t.remove(); });
     }
   });
 }
-window.importListings = importListings;
+window.cleanupAndSeed = cleanupAndSeed;
+
+// A4: Bulk delete
+
+window.toggleSelectAll = function(checked) {
+  document.querySelectorAll('.listing-checkbox').forEach(function(cb) { cb.checked = checked; });
+  selectedListingIds = new Set();
+  if (checked) { document.querySelectorAll('.listing-checkbox').forEach(function(cb) { selectedListingIds.add(cb.value); }); }
+  updateSelectedCount();
+};
+window.updateSelectedCount = function() {
+  selectedListingIds = new Set();
+  document.querySelectorAll('.listing-checkbox:checked').forEach(function(cb) { selectedListingIds.add(cb.value); });
+  const n = selectedListingIds.size;
+  const countEl = document.getElementById('selected-count');
+  const btn = document.getElementById('bulk-delete-btn');
+  if (countEl) countEl.textContent = n;
+  if (btn) btn.style.display = n > 0 ? '' : 'none';
+};
+window.bulkDeleteSelected = function() {
+  const n = selectedListingIds.size;
+  if (n === 0) return;
+  showConfirmModal('Delete ' + n + ' listing' + (n > 1 ? 's' : '') + '?', 'This cannot be undone.', 'Delete ' + n + ' listing' + (n > 1 ? 's' : ''), async () => {
+    toast('Deleting ' + n + ' listing(s)...', 'info');
+    try {
+      const batch = db.batch();
+      selectedListingIds.forEach(function(id) { batch.delete(db.collection('listings').doc(id)); });
+      await batch.commit();
+      toast('Deleted ' + n + ' listing(s).', 'success');
+      selectedListingIds.clear();
+      updateSelectedCount();
+      const sa = document.getElementById('select-all-checkbox'); if (sa) sa.checked = false;
+    } catch (e) { toast('Could not delete: ' + (e.code || ''), 'error'); }
+  });
+};
+
+// E12: Applications
+function renderApplications() {
+  return '<h1>Applications</h1><div class="page-sub">Rental applications from the public site.</div><div class="panel"><div class="panel-header"><h2>All applications (' + (State.applications ? State.applications.length : 0) + ')</h2></div>' + ((State.applications && State.applications.length > 0) ? '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Move-in</th><th>Occupants</th><th>Status</th><th>Submitted</th><th></th></tr></thead><tbody>' + State.applications.map(a => '<tr><td><strong>' + escapeHtml(a.name||'-') + '</strong></td><td>' + escapeHtml(a.email||'-') + '</td><td>' + escapeHtml(a.phone||'-') + '</td><td>' + escapeHtml(a.moveIn||'-') + '</td><td>' + escapeHtml(String(a.occupants||'-')) + '</td><td><span style="font-size:11px;padding:2px 8px;border-radius:8px;background:' + (a.status==='new'?'rgba(10,102,255,.1)':'rgba(16,185,129,.1)') + ';color:' + (a.status==='new'?'#0A66FF':'#10B981') + ';font-weight:600">' + escapeHtml(a.status||'new') + '</span></td><td>' + (a.createdAt ? new Date(a.createdAt.toMillis?a.createdAt.toMillis():a.createdAt).toLocaleDateString() : '-') + '</td><td><button class="btn ' + (a.status==='new'?'btn-primary':'btn-ghost') + '" style="padding:6px 10px;font-size:12px" onclick="updateApplicationStatus(\''+a.id+'\',\''+(a.status==='new'?'reviewed':'new')+'\')">' + (a.status==='new'?'Mark reviewed':'Mark new') + '</button></td></tr>').join('') + '</tbody></table>' : '<div class="empty-state" style="padding:40px"><i class="fa-regular fa-file"></i><h3>No applications yet</h3><p>When visitors submit the Start Application form on the public site, applications will appear here.</p></div>') + '</div>';
+}
+window.renderApplications = renderApplications;
+
+async function updateApplicationStatus(id, status) {
+  try { await db.collection('applications').doc(id).set({ status: status }, { merge: true }); toast('Application marked as ' + status + '.', 'success'); }
+  catch (e) { toast('Could not update: ' + (e.code || ''), 'error'); }
+}
+window.updateApplicationStatus = updateApplicationStatus;
 
 function deleteListing(id) {
   showConfirmModal('Delete property?', 'This cannot be undone.', 'Delete', async () => {
@@ -1797,6 +1896,61 @@ function deleteImageRecord(id) {
 window.deleteImageRecord = deleteImageRecord;
 
 /* ----------------------------- Settings ----------------------------- */
+
+// E12: Applications
+function renderApplications() {
+  return `
+    <h1>Applications</h1>
+    <div class="page-sub">Rental applications submitted from the public site.</div>
+    <div class="panel">
+      <div class="panel-header">
+        <h2>All applications (${State.applications ? State.applications.length : 0})</h2>
+      </div>
+      ${(State.applications && State.applications.length > 0) ? `
+        <table class="data-table">
+          <thead>
+            <tr><th>Name</th><th>Email</th><th>Phone</th><th>Move-in</th><th>Occupants</th><th>Pets</th><th>Status</th><th>Submitted</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${State.applications.map(a => `
+              <tr>
+                <td><strong>${escapeHtml(a.name || '-')}</strong></td>
+                <td>${escapeHtml(a.email || '-')}</td>
+                <td>${escapeHtml(a.phone || '-')}</td>
+                <td>${escapeHtml(a.moveIn || '-')}</td>
+                <td>${escapeHtml(String(a.occupants || '-'))}</td>
+                <td>${escapeHtml(a.pets || '-')}</td>
+                <td><span style="font-size:11px;padding:2px 8px;border-radius:8px;background:${a.status==='new'?'rgba(10,102,255,.1)':'rgba(16,185,129,.1)'};color:${a.status==='new'?'#0A66FF':'#10B981'};font-weight:600">${escapeHtml(a.status || 'new')}</span></td>
+                <td>${a.createdAt ? new Date(a.createdAt.toMillis ? a.createdAt.toMillis() : a.createdAt).toLocaleDateString() : '-'}</td>
+                <td>
+                  <button class="btn ${a.status==='new'?'btn-primary':'btn-ghost'}" style="padding:6px 10px;font-size:12px" onclick="updateApplicationStatus('${a.id}', '${a.status==='new'?'reviewed':'new'}')">${a.status==='new'?'Mark reviewed':'Mark new'}</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      ` : `
+        <div class="empty-state" style="padding:40px">
+          <i class="fa-regular fa-file"></i>
+          <h3>No applications yet</h3>
+          <p>When visitors submit the "Start Application" form on the public site, their applications will appear here.</p>
+        </div>
+      `}
+    </div>
+  `;
+}
+window.renderApplications = renderApplications;
+
+async function updateApplicationStatus(id, status) {
+  try {
+    await db.collection('applications').doc(id).set({ status: status }, { merge: true });
+    toast('Application marked as ' + status + '.', 'success');
+  } catch (e) {
+    toast('Could not update: ' + (e.code || ''), 'error');
+  }
+}
+window.updateApplicationStatus = updateApplicationStatus;
+
 function renderSettings() {
   const b = State.branding || {};
   return `
@@ -1982,6 +2136,26 @@ function startAdminWatchers() {
       snap.forEach(d => State.images.push({ id: d.id, ...d.data() }));
       if (State.view === 'images' || State.view === 'dashboard') renderView();
     }, err => console.warn('images err', err));
+
+  // Applications
+  if (State.unsubApplications) { try { State.unsubApplications(); } catch(e){} }
+  State.unsubApplications = db.collection('applications')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      State.applications = [];
+      snap.forEach(d => State.applications.push({ id: d.id, ...d.data() }));
+      if (State.view === 'applications') renderView();
+    }, err => console.warn('applications err', err));
+
+  // Applications
+  if (State.unsubApplications) { try { State.unsubApplications(); } catch(e){} }
+  State.unsubApplications = db.collection('applications')
+    .orderBy('createdAt', 'desc')
+    .onSnapshot(snap => {
+      State.applications = [];
+      snap.forEach(d => State.applications.push({ id: d.id, ...d.data() }));
+      if (State.view === 'applications') renderView();
+    }, err => console.warn('applications err', err));
 
   // Leads
   if (State.unsubLeads) { try { State.unsubLeads(); } catch(e){} }

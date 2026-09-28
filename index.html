@@ -39,40 +39,43 @@ Error generating stack: `+o.message+`
 </script>
   <script>(function(){function m(a){var h=a.getAttribute("href");if(!h)return;try{var u=new URL(h,document.baseURI);if((u.protocol==="http:"||u.protocol==="https:")&&u.host!==location.host){a.target="_blank";a.rel="noopener noreferrer";}}catch(e){}}function s(){document.querySelectorAll("a[href]").forEach(m);}if(document.readyState!=="loading"){s();}else{document.addEventListener("DOMContentLoaded",s);}document.addEventListener("click",function(e){var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(a){m(a);}},true);})();</script>
   
-<!-- ============ RHC OVERLAY v6 ============ -->
+<!-- ============ RHC OVERLAY v10 ============ -->
 <script>
 (function() {
   'use strict';
 
   /* ===================================================================
-     RHC OVERLAY v6 — A CLEAN overlay that runs OUTSIDE the React lifecycle.
-     The React bundle (download/rental/index.html) has been modified directly to:
-       - Replace the text logo with <img src=window.RHC_LOGO_PUBLIC>
-       - Render `children:window.RHC_NAV_ITEMS||[]` for the desktop nav
-       - Render `children:window.RHC_SVG_MENU||"☰"` for the hamburger button
-       - Patch uf=K0() with `window.RHC_SET_LISTINGS(newListings)` and a re-render hook
-     This overlay provides EVERYTHING ELSE that can't be done in the bundle:
-       1.  window.RHC_NAV_ITEMS / window.RHC_MOBILE_NAV_ITEMS / window.RHC_SVG_MENU
-       2.  Firebase init + Firestore listeners (listings, cities, branding, social)
-       3.  Chat widget (pulse animation, inline-SVG avatars, Cloudinary upload)
-       4.  Renter auth (email/password + Google) with fetchSignInMethodsForEmail check
-       5.  Favorites (heart icons via MutationObserver — cards only)
-       6.  Property detail page (full-screen overlay)
-       7.  Filter bar (price range, beds, baths, move-in, pets)
-       8.  City carousels (10 cities × 5 homes)
-       9.  Customer testimonials (3 reviews)
-      10. "Sign in for personalized recommendations" block
-      11. Bottom mobile tab bar (mobile only, < 768px)
-      12. Footer contact block (admin logo, email, TikTok, agents)
-     CRITICAL RULES ENFORCED:
-       - Inline SVG icons only (no Font Awesome dependency)
-       - ALL Firebase/Cloudinary calls wrapped in try/catch
-       - Send button click handler is `function(e){ e.preventDefault(); sendVisitorMessage(); }`
-         (NEVER `sendVisitorMessage` directly — would pass the event as text)
-       - Cloudinary cloud name = "dbmtqgs3v" (user-corrected, NOT dfd1bgdam)
-       - NO logo/nav injection via MutationObserver (bundle handles those directly)
-       - Heart-icon injection via MutationObserver IS used (cards only)
-       - Logos read from window.RHC_LOGO_PUBLIC / window.RHC_LOGO_ADMIN (set in HTML head)
+     RHC OVERLAY v10 — Production overlay running OUTSIDE the React lifecycle.
+     The React bundle provides the hero/search, header nav, and footer.
+     This overlay provides everything else, with all v9 fixes retained:
+
+     NEW IN v10:
+       - FIX B7:  Skeleton loaders + listings cache (no "No homes yet" glitch)
+       - FIX C8:  Page order: carousels → other houses → map → testimonials
+                  → contact us → footer
+       - FIX D9:  Leaflet map invalidateSize() on load + window resize +
+                  fitBounds after markers added
+       - FIX E10: Search Homes button — filters rhcListings, scrolls to grid
+       - FIX E11: Filter bar actually filters BEFORE rendering carousels/other
+       - FIX E12: Start Application modal (4-step wizard) → Firestore
+       - FIX E13: Terms & Privacy modals with real content
+       - FIX E14: Favorites persistence (localStorage + Firestore)
+       - FIX E15: ALL <img> tags have loading="lazy" + onerror placeholder
+
+     RETAINED FROM v9:
+       - Chat widget (inline-SVG avatars, Cloudinary + Firebase Storage fallback)
+       - Renter auth (email/password + Google) with fetchSignInMethodsForEmail pre-check
+       - Sign-in cache in localStorage.rhc_renter_cache (no refresh glitch)
+       - Property detail page (gallery, stats, amenities, Google Maps, similar, agent)
+       - Mobile tab bar (Search/Favorites/Messages)
+       - Account button + dropdown
+       - Testimonials (3 reviews)
+       - "Sign in for personalized recommendations" block
+       - Logo triple-click → admin (handled by bundle)
+       - Inline SVG icons only (NO Font Awesome)
+       - ALL Firebase/Cloudinary calls wrapped in try/catch with friendly errors
+       - Firestore is the ONLY source of truth for houses (no hardcoded listings)
+       - Cloudinary cloud name: dbmtqgs3v, preset: rental_home_connect
   =================================================================== */
 
   // ============ Logos (already set as window globals by HTML head) ============
@@ -95,7 +98,6 @@ Error generating stack: `+o.message+`
   RHC.currentChatId = localStorage.getItem('rhc_chat_id') || null;
   RHC.visitorName = localStorage.getItem('rhc_visitor_name') || '';
   RHC.unsubMsgs = null; RHC.unsubMeta = null;
-  // FIX: Cloudinary cloud name corrected to dbmtqgs3v (user-reported)
   RHC.cloudName = 'dbmtqgs3v';
   RHC.uploadPreset = 'rental_home_connect';
   RHC.branding = {
@@ -110,16 +112,19 @@ Error generating stack: `+o.message+`
     },
     instagram: '', facebook: ''
   };
-  // FIX: Read cached renter from localStorage to prevent sign-in button glitch on refresh.
-  // Without this, the button shows "Sign In" for ~1s until Firebase confirms the session.
+  // FIX v9: read cached renter from localStorage to prevent sign-in button glitch on refresh.
   RHC.renter = null;
   try {
-    var cached = localStorage.getItem('rhc_renter_cache');
-    if (cached) RHC.renter = JSON.parse(cached);
+    var cachedRenter = localStorage.getItem('rhc_renter_cache');
+    if (cachedRenter) RHC.renter = JSON.parse(cachedRenter);
   } catch(e) {}
-  RHC.savedHomes = JSON.parse(localStorage.getItem('rhc_saved_homes') || '[]');
+  RHC.savedHomes = [];
+  try { RHC.savedHomes = JSON.parse(localStorage.getItem('rhc_saved_homes') || '[]'); } catch(e) {}
   RHC.currentListing = null;
   RHC.activeFilters = { priceMin: 0, priceMax: 10000, beds: 0, baths: 0, pets: false, moveIn: '' };
+  RHC.searchQuery = '';
+  // FIX B7: dataLoaded flag — only show empty states after the first Firestore snapshot
+  RHC.dataLoaded = false;
 
   // ============ Inline SVG icons (NO Font Awesome) ============
   var SVG = {
@@ -137,76 +142,29 @@ Error generating stack: `+o.message+`
     mail:     '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>',
     home:     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 3l9 8h-3v9h-4v-6h-4v6H6v-9H3l9-8z"/></svg>',
     search:   '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>',
+    filter:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 18h4v-2h-4v2zM3 6v2h18V6H3zm3 7h12v-2H6v2z"/></svg>',
+    check:    '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
     star:     '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
     starOutline:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>',
     sparkles: '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2zm7 12l.75 2.75L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75L19 14zM5 14l.75 2.75L8 18l-2.25.75L5 21l-.75-2.25L2 18l2.25-.75L5 14z"/></svg>',
     tiktok:   '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43V9.01a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.04-.44z"/></svg>',
-    chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>'
+    chevronRight: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>',
+    beds:     '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-3h-8v7H3v-3h2v-2h10v2h2v3h2v-7z"/></svg>',
+    baths:    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5h2c0 1.65 1.35 3 3 3s3-1.35 3-3h2c0 2.76-2.24 5-5 5z"/></svg>',
+    paw:      '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><circle cx="4.5" cy="9" r="2"/><circle cx="9" cy="5.5" r="2"/><circle cx="15" cy="5.5" r="2"/><circle cx="19.5" cy="9" r="2"/><path d="M12 16.5c0-2 2-3 4-5 1-1 2-1 3 0 1 1 1 3 0 4-1.5 1.5-3 1-4 2-1.5 1.5-3 .5-3-1z"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z"/></svg>',
+    shield:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>'
   };
 
-  // ============ React element constructor (no React global needed) ============
-  // The bundle reads `window.RHC_NAV_ITEMS` and `window.RHC_MOBILE_NAV_ITEMS` and
-  // passes them to React as children. Each entry must be a valid React element.
-  // We construct the element shape manually (production React accepts this).
-  var REACT_ELEMENT_TYPE = (typeof Symbol === 'function' && typeof Symbol.for === 'function')
-    ? Symbol.for('react.element')
-    : 0xeac7;
-  function makeEl(type, props) {
-    return {
-      $$typeof: REACT_ELEMENT_TYPE,
-      type: type,
-      key: null,
-      ref: null,
-      props: props || {},
-      _owner: null,
-      _store: { validated: true },
-      _self: null,
-      _source: null
-    };
-  }
+  // ============ FIX E15: shared onerror attribute for ALL <img> tags ============
+  var IMG_ONERROR = "this.onerror=null;this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MDAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjRjVGMUVCIi8+PC9zdmc+';";
+  var DEFAULT_HOUSE_IMG = 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=70&auto=format&fit=crop';
 
-  // ============ Nav action helpers (defined first so closures capture them) ============
-  function scrollToId(id) {
-    var el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
-  }
-  function scrollToFooter() {
-    var f = document.getElementById('rhc-footer-contact-host') ||
-            document.querySelector('footer');
-    if (f) f.scrollIntoView({ behavior: 'smooth' });
-  }
-  function openChatWidget() {
-    var fab = document.querySelector('.rhc-chat-fab');
-    if (fab) fab.click();
-  }
-  // Pre-fill chat input (does not auto-send — visitor can edit before sending)
-  function prefillChat(msg) {
-    if (!chatInput) return;
-    chatInput.value = msg;
-    chatInput.style.height = '40px';
-    chatInput.style.height = Math.min(120, chatInput.scrollHeight) + 'px';
-    chatInput.focus();
-  }
-  // Exposed globally so nav onClick handlers and detail-page contact can call it
-  RHC.openChatWithMessage = function(msg) {
-    if (!chatOpen) openChatWidget();
-    setTimeout(function() { prefillChat(msg); }, 350);
-  };
-  RHC.openChat = openChatWidget;
-
-  // Nav items defined directly in bundle via p() — no global needed
-
-  // Mobile nav items defined directly in bundle via p() — no global needed
-
-  // Hamburger icon kept as ☰ in bundle — no global needed
-
-  // closeMobileDrawerIfOpen is a no-op if the bundle doesn't expose a drawer;
-  // if the overlay ever injects its own drawer, we wire it here.
-  function closeMobileDrawerIfOpen() {
-    var drawer = document.getElementById('rhc-mobile-drawer');
-    if (drawer) drawer.classList.remove('open');
-    var back = document.getElementById('rhc-mobile-drawer-backdrop');
-    if (back) back.classList.remove('open');
+  // Helper: build a lazy-loaded <img> with onerror fallback (FIX E15)
+  function imgTag(src, alt, styleAttr) {
+    return '<img src="' + escapeHtml(src || DEFAULT_HOUSE_IMG) + '" alt="' + escapeHtml(alt || '') + '"' +
+           ' loading="lazy" onerror="' + IMG_ONERROR + '"' +
+           (styleAttr ? ' style="' + styleAttr + '"' : '') + '>';
   }
 
   // ============ Base CSS (all overlay UI) ============
@@ -219,6 +177,14 @@ Error generating stack: `+o.message+`
       '.rhc-toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#1A1A18;color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;font-weight:500;z-index:99999;font-family:Inter,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.2);animation:rhcToastIn .25s ease;}',
       '@keyframes rhcToastIn{from{opacity:0;transform:translate(-50%,-12px)}to{opacity:1;transform:translate(-50%,0)}}',
       '@keyframes rhcSpin{to{transform:rotate(360deg)}}',
+      // FIX B7: skeleton shimmer
+      '@keyframes rhcShimmer{0%{background-position:-468px 0}100%{background-position:468px 0}}',
+      '.rhc-skeleton{background:#F5F1EB;background-image:linear-gradient(90deg,#F5F1EB 0%,#EFE9DD 20%,#F5F1EB 40%,#F5F1EB 100%);background-size:1200px 100%;animation:rhcShimmer 1.4s linear infinite;border-radius:8px;}',
+      '.rhc-skeleton-card{background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;}',
+      '.rhc-skeleton-card .sk-img{height:180px;background:#F5F1EB;background-image:linear-gradient(90deg,#F5F1EB 0%,#EFE9DD 20%,#F5F1EB 40%,#F5F1EB 100%);background-size:1200px 100%;animation:rhcShimmer 1.4s linear infinite;}',
+      '.rhc-skeleton-card .sk-line{height:12px;margin:10px 14px;border-radius:6px;background:#F5F1EB;background-image:linear-gradient(90deg,#F5F1EB 0%,#EFE9DD 20%,#F5F1EB 40%,#F5F1EB 100%);background-size:1200px 100%;animation:rhcShimmer 1.4s linear infinite;}',
+      '.rhc-skeleton-card .sk-line.short{width:55%}',
+      '.rhc-skeleton-card .sk-line.mid{width:75%}',
       // Auth modal
       '.rhc-auth-backdrop{position:fixed;inset:0;background:rgba(26,26,24,.6);backdrop-filter:blur(4px);z-index:9500;display:flex;align-items:center;justify-content:center;padding:16px;animation:rhcFade .2s ease;}',
       '@keyframes rhcFade{from{opacity:0}to{opacity:1}}',
@@ -231,8 +197,8 @@ Error generating stack: `+o.message+`
       '.rhc-auth-tab.active{background:#fff;color:#0A66FF;box-shadow:0 1px 3px rgba(0,0,0,.06)}',
       '.rhc-auth-field{margin-bottom:12px}',
       '.rhc-auth-field label{display:block;font-size:12px;font-weight:600;color:#1A1A18;margin-bottom:4px}',
-      '.rhc-auth-field input{width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid #E8E2D9;font-size:14px;background:#fff;transition:border .2s,box-shadow .2s}',
-      '.rhc-auth-field input:focus{outline:none;border-color:#0A66FF;box-shadow:0 0 0 3px rgba(10,102,255,.12)}',
+      '.rhc-auth-field input,.rhc-auth-field textarea,.rhc-auth-field select{width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid #E8E2D9;font-size:14px;background:#fff;transition:border .2s,box-shadow .2s;font-family:Inter,sans-serif;}',
+      '.rhc-auth-field input:focus,.rhc-auth-field textarea:focus,.rhc-auth-field select:focus{outline:none;border-color:#0A66FF;box-shadow:0 0 0 3px rgba(10,102,255,.12)}',
       '.rhc-auth-btn{width:100%;padding:13px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:14px;transition:background .15s;margin-top:6px}',
       '.rhc-auth-btn:hover{background:#0852CC}',
       '.rhc-auth-btn:disabled{opacity:.6;cursor:not-allowed}',
@@ -306,8 +272,10 @@ Error generating stack: `+o.message+`
       '.rhc-name-prompt button{padding:11px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:14px;}',
       '.rhc-name-prompt button:hover{background:#0852CC;}',
       '@media (max-width:480px){.rhc-chat-window{right:0;left:0;bottom:0;width:100vw;height:100vh;height:100dvh;border-radius:0;}.rhc-chat-fab-label{display:none;}}',
-      // Filter bar
+      // Filter bar — applied BEFORE rendering carousels/other
       '.rhc-filter-bar{background:#fff;border:1px solid #E8E2D9;border-radius:14px;padding:14px 18px;margin:16px auto;max-width:1600px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-family:Inter,sans-serif;}',
+      '.rhc-filter-bar .rhc-filter-count{font-size:13px;color:#1A1A18;font-weight:600;}',
+      '.rhc-filter-bar .rhc-filter-count .num{color:#0A66FF;}',
       '.rhc-filter-field{display:flex;flex-direction:column;gap:4px;}',
       '.rhc-filter-field label{font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.3px;}',
       '.rhc-filter-field select,.rhc-filter-field input{padding:8px 10px;border-radius:8px;border:1px solid #E8E2D9;font-size:13px;background:#fff;min-width:90px;}',
@@ -420,7 +388,60 @@ Error generating stack: `+o.message+`
       '.rhc-footer-contact-info .row{display:flex;align-items:center;gap:8px;}',
       '.rhc-footer-contact-info .row svg{color:#0A66FF;}',
       '.rhc-footer-contact-info a{color:#1A1A18;text-decoration:underline;}',
-      '.rhc-footer-contact-info a:hover{color:#0A66FF;}'
+      '.rhc-footer-contact-info a:hover{color:#0A66FF;}',
+      // FIX E12: Application modal (multi-step)
+      '.rhc-app-backdrop{position:fixed;inset:0;background:rgba(26,26,24,.6);backdrop-filter:blur(4px);z-index:9550;display:flex;align-items:center;justify-content:center;padding:16px;animation:rhcFade .2s ease;}',
+      '.rhc-app-card{background:#FFFCF8;border-radius:20px;padding:32px 28px;width:100%;max-width:520px;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:rhcPop .25s ease;font-family:Inter,sans-serif;position:relative;}',
+      '.rhc-app-card h2{font-family:Cormorant Garamond,serif;font-size:26px;color:#1A1A18;font-weight:600;margin-bottom:6px;}',
+      '.rhc-app-card .sub{color:#64748B;font-size:13px;margin-bottom:18px;}',
+      '.rhc-app-steps{display:flex;gap:6px;margin-bottom:20px;}',
+      '.rhc-app-step-dot{flex:1;height:6px;border-radius:3px;background:#E8E2D9;transition:background .25s;}',
+      '.rhc-app-step-dot.active{background:#0A66FF;}',
+      '.rhc-app-step-dot.done{background:#34D399;}',
+      '.rhc-app-step-label{font-size:11px;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.3px;margin-bottom:8px;}',
+      '.rhc-app-summary{background:#F5F1EB;border-radius:12px;padding:14px 16px;font-size:13px;color:#1A1A18;line-height:1.6;}',
+      '.rhc-app-summary .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;}',
+      '.rhc-app-summary .row .k{color:#64748B;font-weight:600;}',
+      '.rhc-app-summary .row .v{color:#1A1A18;text-align:right;}',
+      '.rhc-app-nav{display:flex;gap:10px;margin-top:18px;}',
+      '.rhc-app-nav .rhc-app-btn-secondary{flex:1;padding:12px;border-radius:10px;background:#fff;border:1.5px solid #E8E2D9;color:#1A1A18;font-weight:600;cursor:pointer;font-size:14px;transition:background .15s;}',
+      '.rhc-app-nav .rhc-app-btn-secondary:hover{background:#F5F1EB;}',
+      '.rhc-app-nav .rhc-app-btn-primary{flex:2;padding:12px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:14px;transition:background .15s;}',
+      '.rhc-app-nav .rhc-app-btn-primary:hover{background:#0852CC;}',
+      '.rhc-app-nav .rhc-app-btn-primary:disabled{opacity:.6;cursor:not-allowed;}',
+      '.rhc-app-success{text-align:center;padding:24px 8px;}',
+      '.rhc-app-success svg{color:#34D399;width:64px;height:64px;}',
+      '.rhc-app-success h2{font-size:22px;margin:14px 0 6px;}',
+      '.rhc-app-success p{color:#64748B;font-size:14px;}',
+      // FIX E13: Terms & Privacy modal
+      '.rhc-legal-backdrop{position:fixed;inset:0;background:rgba(26,26,24,.6);backdrop-filter:blur(4px);z-index:9560;display:flex;align-items:center;justify-content:center;padding:16px;animation:rhcFade .2s ease;}',
+      '.rhc-legal-card{background:#FFFCF8;border-radius:20px;padding:32px 28px;width:100%;max-width:640px;max-height:80vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.3);animation:rhcPop .25s ease;font-family:Inter,sans-serif;position:relative;}',
+      '.rhc-legal-card h2{font-family:Cormorant Garamond,serif;font-size:26px;color:#1A1A18;font-weight:600;margin-bottom:14px;}',
+      '.rhc-legal-card h3{font-size:14px;font-weight:700;color:#1A1A18;margin:14px 0 6px;}',
+      '.rhc-legal-card p{font-size:13px;line-height:1.6;color:#1A1A18;margin-bottom:8px;}',
+      '.rhc-legal-card ul{font-size:13px;line-height:1.6;color:#1A1A18;padding-left:20px;margin-bottom:8px;}',
+      '.rhc-legal-card ul li{margin-bottom:4px;}',
+      '.rhc-legal-close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;background:#F5F1EB;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748B;}',
+      '.rhc-legal-close:hover{background:#E8E2D9;}',
+      '.rhc-legal-btn{width:100%;padding:12px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:14px;margin-top:18px;}',
+      '.rhc-legal-btn:hover{background:#0852CC;}',
+      // Search "no results" message
+      '.rhc-search-no-results{padding:32px 20px;text-align:center;color:#64748B;font-family:Inter,sans-serif;background:#FFFCF8;border:1px dashed #E8E2D9;border-radius:14px;margin:16px 0;}',
+      '.rhc-search-no-results h3{font-family:Cormorant Garamond,serif;font-size:20px;color:#1A1A18;margin-bottom:6px;}',
+      '.rhc-search-no-results p{font-size:13px;}',
+      // Map section
+      '#rhc-leaflet-map{height:420px;border-radius:16px;overflow:hidden;border:1px solid #E8E2D9;background:#F5F1EB;}',
+      '.rhc-map-section{max-width:1600px;margin:0 auto 48px;padding:0 16px;font-family:Inter,sans-serif;}',
+      '.rhc-map-section h2{font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px;}',
+      '.rhc-map-section p{font-size:14px;color:#64748B;margin-bottom:16px;}',
+      // Carousels
+      '.rhc-carousels-host{max-width:1600px;margin:0 auto;padding:0 16px 24px;font-family:Inter,sans-serif;}',
+      '.rhc-carousels-host h2{font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px;}',
+      '.rhc-carousels-host .sub{font-size:14px;color:#64748B;margin-bottom:24px;}',
+      // Other houses
+      '.rhc-other-host{max-width:1600px;margin:0 auto;padding:0 16px 24px;font-family:Inter,sans-serif;}',
+      '.rhc-other-host h2{font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px;}',
+      '.rhc-other-host .sub{font-size:14px;color:#64748B;margin-bottom:24px;}'
     ].join('\n');
     document.head.appendChild(st);
   }
@@ -434,7 +455,7 @@ Error generating stack: `+o.message+`
     setTimeout(function() {
       t.style.opacity = '0';
       t.style.transition = 'opacity .3s';
-      setTimeout(function() { t.remove(); }, 300);
+      setTimeout(function() { if (t.parentNode) t.remove(); }, 300);
     }, 3000);
   }
   window.RHC = RHC; window.toast = toast;
@@ -468,16 +489,13 @@ Error generating stack: `+o.message+`
       RHC.auth = RHC.fb.auth();
       try { RHC.storage = RHC.fb.storage(); } catch(e) { RHC.storage = null; console.warn('RHC: storage init failed (uploads will use Cloudinary only)', e); }
 
-      // FIX #4: Set persistence FIRST and await it before any other auth calls.
-      // LOCAL persistence means the signed-in user survives page refresh.
+      // FIX v9: Set persistence FIRST and await it before any other auth calls.
       try { await RHC.auth.setPersistence(RHC.fb.auth.Auth.Persistence.LOCAL); }
       catch(e) { console.warn('RHC: persistence set failed', e); }
 
       // Register the onAuthStateChanged listener BEFORE any signInAnonymously call.
-      // This ensures the listener fires with the persisted user (if any) FIRST.
       RHC.auth.onAuthStateChanged(async function(user) {
         if (user) {
-          // If the user has an email, they're a real renter — load their profile
           if (user.email && !user.isAnonymous) {
             await loadRenterProfile(user);
             // Sync localStorage saved homes -> Firestore on first sign-in
@@ -491,7 +509,6 @@ Error generating stack: `+o.message+`
               await refreshSavedHomesFromFirestore();
             }
           } else {
-            // Anonymous user (for visitor chat) — no renter profile
             RHC.renter = null;
           }
         } else {
@@ -501,9 +518,7 @@ Error generating stack: `+o.message+`
         refreshHeartIcons();
       });
 
-      // FIX #4: Only sign in anonymously if there's NO current user at all.
-      // If a real user (email/Google) is already signed in, DON'T call signInAnonymously —
-      // it would override their session and log them out on refresh.
+      // FIX v9: Only sign in anonymously if there's NO current user at all.
       if (!RHC.auth.currentUser) {
         try { await RHC.auth.signInAnonymously(); }
         catch(e) { console.warn('RHC: anonymous auth failed', e); }
@@ -520,34 +535,70 @@ Error generating stack: `+o.message+`
       } catch(e) { console.warn('RHC: social load failed', e); }
       updateFooterContact();
 
-      // Listen to listings collection -> feed React bundle + split into showcase/other for overlay
+      // FIX B7: Before subscribing to Firestore, read cached listings and render immediately
+      try {
+        var cachedListings = localStorage.getItem('rhc_listings_cache');
+        if (cachedListings) {
+          var parsed = JSON.parse(cachedListings);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            rhcListings = parsed;
+            // Feed React bundle as well so the bundle's grid doesn't flash empty
+            if (typeof window.RHC_SET_LISTINGS === 'function') {
+              try { window.RHC_SET_LISTINGS(parsed); } catch(e) {}
+            }
+            renderCarousels();
+            renderOtherHouses();
+            updateMap();
+          }
+        }
+      } catch(e) { console.warn('RHC: cache read failed', e); }
+
+      // Render skeletons in all hosts (so user sees activity even if no cache)
+      renderCarouselsSkeleton();
+      renderOtherHousesSkeleton();
+
+      // Listen to listings collection → feed React bundle + split into showcase/other
       try {
         RHC.db.collection('listings').onSnapshot(function(snap) {
           var arr = [];
           snap.forEach(function(d) { arr.push(Object.assign({ id: d.id }, d.data())); });
-          RHC.listings = arr;
           rhcListings = arr;
+          // FIX B7: dataLoaded = true → only show empty states after this point
+          RHC.dataLoaded = true;
+          // FIX B7: persist to localStorage so refresh shows cached instantly
+          try { localStorage.setItem('rhc_listings_cache', JSON.stringify(arr)); } catch(e) { console.warn('RHC: cache write failed', e); }
           // Feed the React bundle so its uf array re-renders
           if (typeof window.RHC_SET_LISTINGS === 'function') {
             try { window.RHC_SET_LISTINGS(arr); } catch(e) { console.warn('RHC_SET_LISTINGS call failed', e); }
           }
-          // Update overlay sections
+          // Re-render overlay sections (filters applied)
           renderCarousels();
           renderOtherHouses();
           updateMap();
-        }, function(err) { console.warn('RHC: listings snapshot failed', err); });
+          // FIX E14: re-apply heart state after each render
+          refreshHeartIcons();
+        }, function(err) {
+          console.warn('RHC: listings snapshot failed', err);
+          // Even on error, mark dataLoaded so we can show empty states cleanly
+          RHC.dataLoaded = true;
+          renderCarousels();
+          renderOtherHouses();
+        });
       } catch(e) { console.warn('RHC: listings listener setup failed', e); }
 
       // Resume chat if visitor already has one
       if (RHC.currentChatId) listenToChat(RHC.currentChatId);
     } catch (e) {
       console.error('RHC: Firebase init failed', e);
+      // Show friendly error in the chat panel if available
+      RHC.dataLoaded = true;
+      renderCarousels();
+      renderOtherHouses();
     }
   }
 
   async function loadRenterProfile(user) {
     if (!user) { RHC.renter = null; localStorage.removeItem('rhc_renter_cache'); updateAccountButton(); return; }
-    // If user is anonymous (no email), don't try to load a renter profile
     if (user.isAnonymous || !user.email) {
       RHC.renter = null;
       localStorage.removeItem('rhc_renter_cache');
@@ -561,7 +612,6 @@ Error generating stack: `+o.message+`
       } else {
         RHC.renter = { uid: user.uid, email: user.email || '', name: (user.email || '').split('@')[0] };
       }
-      // Cache to localStorage so refresh doesn't show "Sign In" glitch
       localStorage.setItem('rhc_renter_cache', JSON.stringify(RHC.renter));
       updateAccountButton();
     } catch(e) {
@@ -585,6 +635,1216 @@ Error generating stack: `+o.message+`
     } catch(e) { console.warn('RHC: refreshSavedHomes failed', e); }
   }
 
+  // ============ Content host injection (FIX C8 page order) ============
+  // Order: Hero/search (bundle) → carousels → other houses → map → testimonials
+  //        → contact us → footer (bundle)
+  var carouselHost = null, otherHousesHost = null, mapHost = null, rhcMap = null;
+  var rhcListings = [];
+  var rhcMapMarkers = [];
+  var CITY_COORDS = {
+    "New York":[40.7128,-74.0060],"Los Angeles":[34.0522,-118.2437],"Chicago":[41.8781,-87.6298],
+    "Houston":[29.7604,-95.3698],"Phoenix":[33.4484,-112.0740],"Philadelphia":[39.9526,-75.1652],
+    "San Antonio":[29.4241,-98.4936],"San Diego":[32.7157,-117.1611],"Dallas":[32.7767,-96.7970],
+    "Austin":[30.2672,-97.7431],"Jacksonville":[30.3322,-81.6557],"Fort Worth":[32.7555,-97.3308],
+    "Columbus":[39.9612,-82.9988],"Charlotte":[35.2271,-80.8431],"San Francisco":[37.7749,-122.4194],
+    "Indianapolis":[39.7684,-86.1581],"Seattle":[47.6062,-122.3321],"Denver":[39.7392,-104.9903],
+    "Washington":[38.9072,-77.0369],"Boston":[42.3601,-71.0589],"El Paso":[31.7619,-106.4850],
+    "Nashville":[36.1627,-86.7816],"Detroit":[42.3314,-83.0458],"Oklahoma City":[35.4676,-97.5164],
+    "Portland":[45.5152,-122.6784],"Las Vegas":[36.1699,-115.1398],"Memphis":[35.1495,-90.0490],
+    "Louisville":[38.2527,-85.7585],"Baltimore":[39.2904,-76.6122],"Milwaukee":[43.0389,-87.9065],
+    "Albuquerque":[35.0844,-106.6504],"Tucson":[32.2226,-110.9747],"Fresno":[36.7378,-119.7871],
+    "Sacramento":[38.5816,-121.4944],"Miami":[25.7617,-80.1918],"Atlanta":[33.7490,-84.3880],
+    "Minneapolis":[44.9778,-93.2650],"Tampa":[27.9506,-82.4572],"Cleveland":[41.4993,-81.6944]
+  };
+
+  function injectContentHosts() {
+    var listingsEl = document.getElementById('listings');
+    if (!listingsEl) return false;
+
+    // Hide the React bundle's listing grid — overlay replaces it
+    listingsEl.style.display = 'none';
+
+    // FIX C8: insert in correct order — carousels → other houses → map → (listings hidden)
+    // Each insertBefore places the new element before listings.
+    // Order of insertion matters: first carouselHost, then otherHousesHost, then mapHost.
+
+    // 1. Featured carousels (NYC + LA rows) — section #2
+    if (!carouselHost || !document.body.contains(carouselHost)) {
+      carouselHost = document.createElement('div');
+      carouselHost.id = 'rhc-city-carousels';
+      carouselHost.className = 'rhc-carousels-host';
+      listingsEl.parentElement.insertBefore(carouselHost, listingsEl);
+    }
+
+    // 2. Rentals Across USA — section #3
+    if (!otherHousesHost || !document.body.contains(otherHousesHost)) {
+      otherHousesHost = document.createElement('div');
+      otherHousesHost.id = 'rhc-other-houses';
+      otherHousesHost.className = 'rhc-other-host';
+      listingsEl.parentElement.insertBefore(otherHousesHost, listingsEl);
+    }
+
+    // 3. The Map — section #4
+    if (!mapHost || !document.body.contains(mapHost)) {
+      mapHost = document.createElement('div');
+      mapHost.id = 'rhc-map-section';
+      mapHost.className = 'rhc-map-section';
+      mapHost.innerHTML = '<h2>Explore on the map</h2>' +
+        '<p>Tap a marker to see available rentals in that area.</p>' +
+        '<div id="rhc-leaflet-map"></div>';
+      listingsEl.parentElement.insertBefore(mapHost, listingsEl);
+    }
+
+    return true;
+  }
+
+  // ============ Skeleton renderers (FIX B7) ============
+  function skeletonCardHtml(widthStyle) {
+    return '<div class="rhc-skeleton-card" style="' + (widthStyle || 'flex:0 0 280px') + '">' +
+      '<div class="sk-img"></div>' +
+      '<div class="sk-line mid"></div>' +
+      '<div class="sk-line short"></div>' +
+      '</div>';
+  }
+
+  function renderCarouselsSkeleton() {
+    if (!carouselHost) return;
+    var html = '<h2>Featured homes</h2>';
+    html += '<p class="sub">Loading showcase rentals…</p>';
+    SHOWCASE_CITIES.forEach(function(c) {
+      html += '<div style="margin-bottom:36px">';
+      html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:12px">';
+      html += '<h3 style="font-family:Cormorant Garamond,serif;font-size:24px;color:#1A1A18;font-weight:600">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</h3>';
+      html += '<span style="font-size:13px;color:#64748B;flex-shrink:0">Loading…</span>';
+      html += '</div>';
+      html += '<div style="display:flex;gap:14px;overflow:hidden;padding-bottom:8px">';
+      for (var i = 0; i < 3; i++) html += skeletonCardHtml('flex:0 0 280px');
+      html += '</div></div>';
+    });
+    carouselHost.innerHTML = html;
+  }
+
+  function renderOtherHousesSkeleton() {
+    if (!otherHousesHost) return;
+    var html = '<h2>Rentals Across USA</h2>';
+    html += '<p class="sub">Loading rentals across the country…</p>';
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
+    for (var i = 0; i < 6; i++) html += skeletonCardHtml('');
+    html += '</div>';
+    otherHousesHost.innerHTML = html;
+  }
+
+  // ============ Featured carousels (NYC + LA, 3 each, from Firestore, filters applied) ============
+  var SHOWCASE_CITIES = [
+    { city: "New York", state: "NY" },
+    { city: "Los Angeles", state: "CA" }
+  ];
+
+  function listingCardHtml(h, isCarousel) {
+    var img = (h.images && h.images[0]) || DEFAULT_HOUSE_IMG;
+    var widthStyle = isCarousel ? 'flex:0 0 280px;' : '';
+    var cardStyle = widthStyle + 'background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;' + (isCarousel ? 'scroll-snap-align:start;' : '');
+    var html = '<div class="rhc-listing-card" data-rhc-listing-id="' + escapeHtml(h.id || '') + '" style="' + cardStyle + '" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.boxShadow=\'0 12px 32px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
+    html += '<div style="height:180px;background:#F5F1EB;overflow:hidden;position:relative">';
+    html += imgTag(img, (h.address || 'Rental home'), 'width:100%;height:100%;object-fit:cover');
+    html += '<div style="position:absolute;top:10px;left:10px;background:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.5px">' + escapeHtml((h.type || 'House').toUpperCase()) + '</div>';
+    html += '<div style="position:absolute;top:10px;right:10px;background:#1A1A18;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">$' + ((h.price || 0).toLocaleString()) + '/mo</div>';
+    html += '</div><div style="padding:14px">';
+    html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px">' + escapeHtml(h.address || 'Address') + '</div>';
+    html += '<div style="font-size:12px;color:#64748B;margin-bottom:8px">' + escapeHtml(h.city || '') + (h.state ? ', ' + escapeHtml(h.state) : '') + '</div>';
+    html += '<div style="display:flex;gap:10px;font-size:12px;color:#1A1A18"><span><strong>' + (h.beds || 0) + '</strong> bd</span><span><strong>' + (h.baths || 0) + '</strong> ba</span><span><strong>' + ((h.sqft || 0).toLocaleString()) + '</strong> sqft</span></div>';
+    html += '</div></div>';
+    return html;
+  }
+
+  function renderCarousels() {
+    if (!carouselHost) return;
+    // FIX E11: apply filters + search BEFORE splitting into cities
+    var filtered = applyFiltersToListings(rhcListings);
+    var showcaseListings = filtered.filter(function(l) { return l.placement === 'showcase'; });
+
+    var html = '<h2>Featured homes</h2>';
+    html += '<p class="sub">Hand-picked rentals in our most-requested cities. Scroll horizontally to browse.</p>';
+    var anyCityHasListings = false;
+    SHOWCASE_CITIES.forEach(function(c) {
+      var cityListings = showcaseListings.filter(function(l) { return (l.city || '') === c.city; }).slice(0, 3);
+      html += '<div style="margin-bottom:36px">';
+      html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:12px">';
+      html += '<h3 style="font-family:Cormorant Garamond,serif;font-size:24px;color:#1A1A18;font-weight:600">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</h3>';
+      html += '<span style="font-size:13px;color:#64748B;flex-shrink:0">' + cityListings.length + ' home' + (cityListings.length === 1 ? '' : 's') + ' &bull; scroll &rarr;</span>';
+      html += '</div>';
+      if (cityListings.length === 0) {
+        // FIX B7: only show empty state if data has loaded
+        if (RHC.dataLoaded) {
+          html += '<div style="padding:20px;background:#FAFAF8;border:1px dashed #E8E2D9;border-radius:14px;color:#64748B;font-size:13px;text-align:center">No showcase homes in ' + escapeHtml(c.city) + ' right now. Check back soon!</div>';
+        } else {
+          // Show 3 skeletons instead of empty message
+          html += '<div style="display:flex;gap:14px;overflow:hidden;padding-bottom:8px">';
+          for (var i = 0; i < 3; i++) html += skeletonCardHtml('flex:0 0 280px');
+          html += '</div>';
+        }
+      } else {
+        anyCityHasListings = true;
+        html += '<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scroll-snap-type:x mandatory">';
+        cityListings.forEach(function(h) {
+          html += listingCardHtml(h, true);
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+    carouselHost.innerHTML = html;
+    // FIX E14: refresh heart icons after render
+    refreshHeartIcons();
+  }
+
+  function renderOtherHouses() {
+    if (!otherHousesHost) return;
+    var filtered = applyFiltersToListings(rhcListings);
+    var otherListings = filtered.filter(function(l) { return l.placement !== 'showcase'; });
+
+    var html = '<div style="display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">';
+    html += '<h2>Rentals Across USA</h2>';
+    html += '<span class="rhc-filter-count" id="rhc-filter-count" style="font-size:13px;color:#64748B"><span class="num">' + filtered.length + '</span> home' + (filtered.length === 1 ? '' : 's') + ' match your filters</span>';
+    html += '</div>';
+    html += '<p class="sub">Other available rentals across the country.</p>';
+
+    // FIX E10: search no-results message
+    if (RHC.searchQuery && filtered.length === 0 && RHC.dataLoaded) {
+      html += '<div class="rhc-search-no-results">';
+      html += '<h3>No homes match your search</h3>';
+      html += '<p>We couldn\'t find any homes matching "' + escapeHtml(RHC.searchQuery) + '". Try a different search term or clear your filters.</p>';
+      html += '</div>';
+      otherHousesHost.innerHTML = html;
+      refreshHeartIcons();
+      return;
+    }
+
+    // FIX E11: filter no-results message
+    if (filtered.length === 0 && RHC.dataLoaded) {
+      html += '<div class="rhc-search-no-results">';
+      html += '<h3>No homes match your filters</h3>';
+      html += '<p>Try widening your price range or removing some filters.</p>';
+      html += '</div>';
+      otherHousesHost.innerHTML = html;
+      refreshHeartIcons();
+      return;
+    }
+
+    // FIX B7: if data not yet loaded, show skeletons instead of "no homes"
+    if (!RHC.dataLoaded && otherListings.length === 0) {
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
+      for (var i = 0; i < 6; i++) html += skeletonCardHtml('');
+      html += '</div>';
+      otherHousesHost.innerHTML = html;
+      return;
+    }
+
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
+    otherListings.forEach(function(h) {
+      html += listingCardHtml(h, false);
+    });
+    html += '</div>';
+    otherHousesHost.innerHTML = html;
+    // FIX E14: refresh heart icons after render
+    refreshHeartIcons();
+  }
+
+  // ============ Filter logic (FIX E11 — filters actually work) ============
+  function applyFiltersToListings(list) {
+    if (!Array.isArray(list)) return [];
+    var f = RHC.activeFilters;
+    var q = (RHC.searchQuery || '').trim().toLowerCase();
+    return list.filter(function(l) {
+      // Price filter
+      var price = parseInt(l.price, 10) || 0;
+      if (price > 0) {
+        if (price < f.priceMin) return false;
+        if (price > f.priceMax) return false;
+      }
+      // Beds filter (1+ means at least N)
+      var beds = parseInt(l.beds, 10) || 0;
+      if (beds > 0 && beds < f.beds) return false;
+      // Baths filter
+      var baths = parseInt(l.baths, 10) || 0;
+      if (baths > 0 && baths < f.baths) return false;
+      // Pets filter
+      if (f.pets) {
+        var petsStr = (l.pets || '').toLowerCase();
+        if (petsStr.indexOf('no pet') >= 0 || petsStr === 'no pets') return false;
+      }
+      // Move-in date filter (if listing has availableDate, must be on or before chosen date)
+      if (f.moveIn && l.availableDate) {
+        try {
+          var moveInTs = new Date(f.moveIn).getTime();
+          var availTs = (l.availableDate.toMillis) ? l.availableDate.toMillis() : new Date(l.availableDate).getTime();
+          if (availTs > moveInTs) return false;
+        } catch(e) {}
+      }
+      // Search query filter (address, city, state, zip, keyword)
+      if (q) {
+        var hay = [
+          l.address || '', l.city || '', l.state || '', l.zip || '', l.zipCode || '',
+          l.keyword || '', l.description || '', l.type || ''
+        ].join(' ').toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function applyFiltersAndRender() {
+    renderCarousels();
+    renderOtherHouses();
+    updateMap();
+    refreshHeartIcons();
+  }
+
+  // ============ Filter bar ============
+  function injectFilterBar() {
+    if (document.getElementById('rhc-filter-bar')) return true;
+    if (!otherHousesHost) return false;
+    var bar = document.createElement('div');
+    bar.id = 'rhc-filter-bar';
+    bar.className = 'rhc-filter-bar';
+    bar.innerHTML =
+      '<div class="rhc-filter-field"><label>Price range</label><div class="rhc-price-range">' +
+        '<input type="range" id="rhc-price-min" min="0" max="10000" step="500" value="0">' +
+        '<span class="value" id="rhc-price-min-val">$0</span><span style="color:#94A3B8">-</span>' +
+        '<input type="range" id="rhc-price-max" min="0" max="10000" step="500" value="10000">' +
+        '<span class="value" id="rhc-price-max-val">$10k+</span>' +
+      '</div></div>' +
+      '<div class="rhc-filter-field"><label>Beds</label><select id="rhc-filter-beds">' +
+        '<option value="0">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>' +
+      '<div class="rhc-filter-field"><label>Baths</label><select id="rhc-filter-baths">' +
+        '<option value="0">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>' +
+      '<div class="rhc-filter-field"><label>Move-in date</label><input type="date" id="rhc-filter-movein"></div>' +
+      '<label class="rhc-filter-toggle"><input type="checkbox" id="rhc-filter-pets"> Pets OK</label>' +
+      '<button class="rhc-account-btn ghost" style="height:32px;padding:0 12px;font-size:12px;margin-left:auto" id="rhc-filter-clear">Clear</button>';
+    otherHousesHost.parentElement.insertBefore(bar, otherHousesHost);
+
+    var pmin = document.getElementById('rhc-price-min');
+    var pmax = document.getElementById('rhc-price-max');
+    pmin.addEventListener('input', function(e) {
+      var v = parseInt(e.target.value, 10) || 0;
+      if (parseInt(pmax.value, 10) < v) { pmax.value = v; document.getElementById('rhc-price-max-val').textContent = v === 10000 ? '$10k+' : '$' + v.toLocaleString(); }
+      RHC.activeFilters.priceMin = v;
+      document.getElementById('rhc-price-min-val').textContent = '$' + v.toLocaleString();
+      applyFiltersAndRender();
+    });
+    pmax.addEventListener('input', function(e) {
+      var v = parseInt(e.target.value, 10) || 0;
+      if (parseInt(pmin.value, 10) > v) { pmin.value = v; document.getElementById('rhc-price-min-val').textContent = '$' + v.toLocaleString(); }
+      RHC.activeFilters.priceMax = v;
+      document.getElementById('rhc-price-max-val').textContent = v === 10000 ? '$10k+' : '$' + v.toLocaleString();
+      applyFiltersAndRender();
+    });
+    document.getElementById('rhc-filter-beds').addEventListener('change', function(e) { RHC.activeFilters.beds = parseInt(e.target.value, 10) || 0; applyFiltersAndRender(); });
+    document.getElementById('rhc-filter-baths').addEventListener('change', function(e) { RHC.activeFilters.baths = parseInt(e.target.value, 10) || 0; applyFiltersAndRender(); });
+    document.getElementById('rhc-filter-pets').addEventListener('change', function(e) { RHC.activeFilters.pets = e.target.checked; applyFiltersAndRender(); });
+    document.getElementById('rhc-filter-movein').addEventListener('change', function(e) { RHC.activeFilters.moveIn = e.target.value; applyFiltersAndRender(); });
+    document.getElementById('rhc-filter-clear').addEventListener('click', function(e) {
+      e.preventDefault();
+      RHC.clearFilters();
+    });
+    return true;
+  }
+
+  RHC.clearFilters = function() {
+    RHC.activeFilters = { priceMin: 0, priceMax: 10000, beds: 0, baths: 0, pets: false, moveIn: '' };
+    RHC.searchQuery = '';
+    var minSlider = document.getElementById('rhc-price-min');
+    var maxSlider = document.getElementById('rhc-price-max');
+    var bedsSel = document.getElementById('rhc-filter-beds');
+    var bathsSel = document.getElementById('rhc-filter-baths');
+    var petsChk = document.getElementById('rhc-filter-pets');
+    var moveinInp = document.getElementById('rhc-filter-movein');
+    if (minSlider) { minSlider.value = 0; document.getElementById('rhc-price-min-val').textContent = '$0'; }
+    if (maxSlider) { maxSlider.value = 10000; document.getElementById('rhc-price-max-val').textContent = '$10k+'; }
+    if (bedsSel) bedsSel.value = '0';
+    if (bathsSel) bathsSel.value = '0';
+    if (petsChk) petsChk.checked = false;
+    if (moveinInp) moveinInp.value = '';
+    applyFiltersAndRender();
+    toast('Filters cleared.');
+  };
+
+  // ============ Search handler (FIX E10) ============
+  function setupSearchHandler() {
+    // Find the React bundle's "Search Homes" button (text contains "Search Homes")
+    var btns = document.querySelectorAll('button');
+    var searchBtn = null;
+    for (var i = 0; i < btns.length; i++) {
+      var txt = (btns[i].textContent || '').trim();
+      if (txt.indexOf('Search Homes') >= 0 || txt === 'Search') { searchBtn = btns[i]; break; }
+    }
+    if (!searchBtn) return false;
+    if (searchBtn.getAttribute('data-rhc-search-wired') === '1') return true;
+    searchBtn.setAttribute('data-rhc-search-wired', '1');
+    // Capture phase so we run before any React onClick handler
+    searchBtn.addEventListener('click', function(e) {
+      try {
+        // Find the search input — usually a sibling input with type=text or no type
+        var inputs = document.querySelectorAll('input[type="text"], input[type="search"], input:not([type])');
+        var q = '';
+        for (var j = 0; j < inputs.length; j++) {
+          var inp = inputs[j];
+          // Skip inputs inside modals/overlays
+          if (inp.closest('.rhc-chat-window') || inp.closest('.rhc-app-card') || inp.closest('.rhc-auth-card')) continue;
+          if (inp.value && inp.value.trim()) { q = inp.value.trim(); break; }
+        }
+        RHC.searchQuery = q;
+        // Apply filters + render
+        applyFiltersAndRender();
+        // Scroll to the "Rentals Across USA" section
+        var target = document.getElementById('rhc-other-houses') ||
+                     document.getElementById('rhc-filter-bar') ||
+                     document.getElementById('listings');
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Toast result count
+        var count = applyFiltersToListings(rhcListings).length;
+        if (q) {
+          if (count > 0) toast('Found ' + count + ' home' + (count === 1 ? '' : 's') + ' matching "' + q + '"');
+          else toast('No homes match your search. Try different keywords.');
+        }
+      } catch(err) {
+        console.warn('RHC: search handler failed', err);
+      }
+    }, true);
+    return true;
+  }
+
+  // ============ Leaflet map (FIX D9: invalidateSize fix) ============
+  function injectLeafletStyles() {
+    if (document.getElementById('rhc-leaflet-css')) return;
+    var link = document.createElement('link');
+    link.id = 'rhc-leaflet-css';
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+  }
+
+  function initMap() {
+    if (rhcMap) {
+      // FIX D9: ensure tiles render correctly even on late init
+      try { setTimeout(function(){ rhcMap.invalidateSize(); }, 200); } catch(e) {}
+      return;
+    }
+    var mapEl = document.getElementById('rhc-leaflet-map');
+    if (!mapEl) return;
+    injectLeafletStyles();
+    if (typeof L === 'undefined') {
+      loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js').then(function() {
+        createMap();
+      }).catch(function(e) {
+        console.warn('RHC: Leaflet JS load failed', e);
+        mapEl.innerHTML = '<div style="padding:40px;text-align:center;color:#64748B;font-family:Inter,sans-serif">Map could not load. Please refresh the page.</div>';
+      });
+    } else {
+      createMap();
+    }
+  }
+
+  function createMap() {
+    var mapEl = document.getElementById('rhc-leaflet-map');
+    if (!mapEl || rhcMap) return;
+    try {
+      // Default view: USA center
+      rhcMap = L.map(mapEl, { scrollWheelZoom: false }).setView([39.5, -98.35], 4);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors', maxZoom: 18
+      }).addTo(rhcMap);
+      // FIX D9: invalidateSize after a small timeout — fixes tile rendering when map
+      // is created inside a previously-hidden or flex container.
+      setTimeout(function() {
+        try { rhcMap.invalidateSize(); } catch(e) {}
+      }, 200);
+      // FIX D9: invalidateSize on window resize too
+      window.addEventListener('resize', function() {
+        try { if (rhcMap) rhcMap.invalidateSize(); } catch(e) {}
+      });
+      updateMap();
+    } catch(e) {
+      console.warn('RHC: createMap failed', e);
+    }
+  }
+
+  function updateMap() {
+    if (!rhcMap || typeof L === 'undefined') return;
+    try {
+      // Clear old markers
+      rhcMapMarkers.forEach(function(m) { try { rhcMap.removeLayer(m); } catch(e) {} });
+      rhcMapMarkers = [];
+      // Group listings by city where showOnMap === true
+      var cityMap = {};
+      rhcListings.forEach(function(l) {
+        if (!l.showOnMap) return;
+        var key = (l.city || '') + ', ' + (l.state || '');
+        if (!cityMap[key]) cityMap[key] = { city: l.city, state: l.state, listings: [] };
+        cityMap[key].listings.push(l);
+      });
+      // Place markers
+      var group = [];
+      Object.keys(cityMap).forEach(function(key) {
+        var c = cityMap[key];
+        var coords = CITY_COORDS[c.city];
+        if (!coords) return;
+        var marker = L.marker([coords[0], coords[1]]).addTo(rhcMap);
+        var popupHtml = '<div style="font-family:Inter,sans-serif;max-width:250px"><strong style="font-size:15px">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</strong><br><span style="font-size:12px;color:#64748B">' + c.listings.length + ' rental' + (c.listings.length > 1 ? 's' : '') + ' available</span>';
+        c.listings.slice(0, 5).forEach(function(h) {
+          popupHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #E8E2D9"><div style="font-weight:600;font-size:13px;color:#1A1A18">' + escapeHtml(h.address || '') + '</div><div style="font-size:12px;color:#0A66FF;font-weight:700">$' + ((h.price || 0).toLocaleString()) + '/mo</div><div style="font-size:11px;color:#64748B">' + (h.beds || 0) + ' bd &bull; ' + (h.baths || 0) + ' ba</div></div>';
+        });
+        if (c.listings.length > 5) popupHtml += '<div style="margin-top:8px;font-size:12px;color:#64748B">+' + (c.listings.length - 5) + ' more</div>';
+        popupHtml += '</div>';
+        marker.bindPopup(popupHtml);
+        rhcMapMarkers.push(marker);
+        group.push([coords[0], coords[1]]);
+      });
+      // FIX D9: fitBounds to show all markers
+      if (group.length > 0) {
+        try {
+          if (group.length === 1) {
+            rhcMap.setView(group[0], 10);
+          } else {
+            rhcMap.fitBounds(group, { padding: [40, 40] });
+          }
+          // Always re-invalidate after fitBounds
+          setTimeout(function() { try { rhcMap.invalidateSize(); } catch(e) {} }, 200);
+        } catch(e) { console.warn('RHC: fitBounds failed', e); }
+      }
+    } catch(e) { console.warn('RHC: updateMap failed', e); }
+  }
+
+  RHC.filterCity = function(cityName) {
+    try {
+      RHC.searchQuery = cityName;
+      applyFiltersAndRender();
+      var l = document.getElementById('rhc-other-houses') || document.getElementById('listings');
+      if (l) l.scrollIntoView({ behavior: 'smooth' });
+    } catch(e) { console.warn('RHC: filterCity failed', e); }
+  };
+
+  // ============ Application modal (FIX E12 — multi-step wizard) ============
+  function setupApplicationButton() {
+    var btns = document.querySelectorAll('button');
+    var applyBtn = null;
+    for (var i = 0; i < btns.length; i++) {
+      var txt = (btns[i].textContent || '').trim();
+      if (txt.indexOf('Start Application') >= 0 || txt.indexOf('Apply Now') >= 0) { applyBtn = btns[i]; break; }
+    }
+    if (!applyBtn) return false;
+    if (applyBtn.getAttribute('data-rhc-app-wired') === '1') return true;
+    applyBtn.setAttribute('data-rhc-app-wired', '1');
+    applyBtn.addEventListener('click', function(e) {
+      // Don't preventDefault — the bundle may do its own thing; we just open our modal too
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+        showApplicationModal();
+      } catch(err) { console.warn('RHC: application button handler failed', err); }
+    }, true);
+    return true;
+  }
+
+  function showApplicationModal() {
+    closeApplicationModal();
+    var app = { name: '', email: '', phone: '', moveIn: '', occupants: 1, pets: false, notes: '' };
+    if (RHC.renter) {
+      app.name = RHC.renter.name || '';
+      app.email = RHC.renter.email || '';
+    }
+    var root = document.createElement('div');
+    root.id = 'rhc-app-modal';
+    root.innerHTML = '<div class="rhc-app-backdrop"><div class="rhc-app-card">' +
+      '<button class="rhc-auth-close" aria-label="Close" id="rhc-app-close">' + SVG.close + '</button>' +
+      '<div id="rhc-app-body"></div>' +
+      '</div></div>';
+    document.body.appendChild(root);
+    root.querySelector('#rhc-app-close').addEventListener('click', closeApplicationModal);
+    root.querySelector('.rhc-app-backdrop').addEventListener('click', function(e) {
+      if (e.target === e.currentTarget) closeApplicationModal();
+    });
+    renderAppStep(1, app);
+  }
+
+  function closeApplicationModal() {
+    var r = document.getElementById('rhc-app-modal');
+    if (r) r.remove();
+  }
+
+  function renderAppStep(step, app) {
+    var body = document.getElementById('rhc-app-body');
+    if (!body) return;
+    var totalSteps = 4;
+    var dots = '';
+    for (var i = 1; i <= totalSteps; i++) {
+      var cls = i === step ? 'active' : (i < step ? 'done' : '');
+      dots += '<div class="rhc-app-step-dot ' + cls + '"></div>';
+    }
+    var html = '<div class="rhc-app-steps">' + dots + '</div>';
+    if (step === 1) {
+      html += '<h2>Tell us about you</h2>';
+      html += '<div class="sub">Step 1 of 4 — Personal information</div>';
+      html += '<div class="rhc-auth-field"><label>Full name *</label><input id="rhc-app-name" type="text" placeholder="Jane Doe" value="' + escapeHtml(app.name) + '"></div>';
+      html += '<div class="rhc-auth-field"><label>Email *</label><input id="rhc-app-email" type="email" placeholder="you@example.com" value="' + escapeHtml(app.email) + '"></div>';
+      html += '<div class="rhc-auth-field"><label>Phone</label><input id="rhc-app-phone" type="tel" placeholder="(555) 123-4567" value="' + escapeHtml(app.phone) + '"></div>';
+      html += '<div class="rhc-app-nav"><button class="rhc-app-btn-secondary" id="rhc-app-cancel">Cancel</button>' +
+              '<button class="rhc-app-btn-primary" id="rhc-app-next">Next &rarr;</button></div>';
+    } else if (step === 2) {
+      html += '<h2>Rental preferences</h2>';
+      html += '<div class="sub">Step 2 of 4 — When and how</div>';
+      html += '<div class="rhc-auth-field"><label>Preferred move-in date</label><input id="rhc-app-movein" type="date" value="' + escapeHtml(app.moveIn) + '"></div>';
+      html += '<div class="rhc-auth-field"><label>Number of occupants</label><input id="rhc-app-occupants" type="number" min="1" max="20" value="' + escapeHtml(app.occupants) + '"></div>';
+      html += '<div class="rhc-auth-field"><label class="rhc-filter-toggle"><input type="checkbox" id="rhc-app-pets" ' + (app.pets ? 'checked' : '') + '> I have pets</label></div>';
+      html += '<div class="rhc-app-nav"><button class="rhc-app-btn-secondary" id="rhc-app-back">&larr; Back</button>' +
+              '<button class="rhc-app-btn-primary" id="rhc-app-next">Next &rarr;</button></div>';
+    } else if (step === 3) {
+      html += '<h2>Anything else?</h2>';
+      html += '<div class="sub">Step 3 of 4 — Additional notes</div>';
+      html += '<div class="rhc-auth-field"><label>Tell us about your ideal home, preferred neighborhoods, must-have amenities, or anything else we should know.</label>' +
+              '<textarea id="rhc-app-notes" rows="5" placeholder="I\'m looking for a quiet 2-bedroom near public transit with in-unit laundry and parking…">' + escapeHtml(app.notes) + '</textarea></div>';
+      html += '<div class="rhc-app-nav"><button class="rhc-app-btn-secondary" id="rhc-app-back">&larr; Back</button>' +
+              '<button class="rhc-app-btn-primary" id="rhc-app-next">Review &rarr;</button></div>';
+    } else if (step === 4) {
+      html += '<h2>Review and submit</h2>';
+      html += '<div class="sub">Step 4 of 4 — Confirm your application</div>';
+      html += '<div class="rhc-app-summary">';
+      html += '<div class="row"><span class="k">Name</span><span class="v">' + escapeHtml(app.name || '—') + '</span></div>';
+      html += '<div class="row"><span class="k">Email</span><span class="v">' + escapeHtml(app.email || '—') + '</span></div>';
+      html += '<div class="row"><span class="k">Phone</span><span class="v">' + escapeHtml(app.phone || '—') + '</span></div>';
+      html += '<div class="row"><span class="k">Move-in</span><span class="v">' + escapeHtml(app.moveIn || 'Flexible') + '</span></div>';
+      html += '<div class="row"><span class="k">Occupants</span><span class="v">' + escapeHtml(String(app.occupants || 1)) + '</span></div>';
+      html += '<div class="row"><span class="k">Pets</span><span class="v">' + (app.pets ? 'Yes' : 'No') + '</span></div>';
+      html += '<div class="row" style="flex-direction:column;align-items:flex-start;gap:4px"><span class="k">Notes</span><span class="v" style="text-align:left">' + escapeHtml(app.notes || '—') + '</span></div>';
+      html += '</div>';
+      html += '<div class="rhc-app-nav"><button class="rhc-app-btn-secondary" id="rhc-app-back">&larr; Back</button>' +
+              '<button class="rhc-app-btn-primary" id="rhc-app-submit">Submit application</button></div>';
+    }
+    body.innerHTML = html;
+
+    var root = document.getElementById('rhc-app-modal');
+    root.querySelector('#rhc-app-cancel').addEventListener('click', closeApplicationModal);
+    if (step > 1) {
+      root.querySelector('#rhc-app-back').addEventListener('click', function() {
+        if (step === 2) {
+          app.moveIn = (document.getElementById('rhc-app-movein') || {}).value || '';
+          app.occupants = parseInt((document.getElementById('rhc-app-occupants') || {}).value, 10) || 1;
+          app.pets = (document.getElementById('rhc-app-pets') || {}).checked;
+        } else if (step === 3) {
+          app.notes = (document.getElementById('rhc-app-notes') || {}).value || '';
+        } else if (step === 4) {
+          // No state to save on back from review
+        }
+        renderAppStep(step - 1, app);
+      });
+    }
+    if (step < 4) {
+      root.querySelector('#rhc-app-next').addEventListener('click', function() {
+        if (step === 1) {
+          app.name = (document.getElementById('rhc-app-name') || {}).value || '';
+          app.email = (document.getElementById('rhc-app-email') || {}).value || '';
+          app.phone = (document.getElementById('rhc-app-phone') || {}).value || '';
+          if (!app.name.trim()) { toast('Please enter your name.'); return; }
+          if (!app.email.trim() || app.email.indexOf('@') < 0) { toast('Please enter a valid email.'); return; }
+        } else if (step === 2) {
+          app.moveIn = (document.getElementById('rhc-app-movein') || {}).value || '';
+          app.occupants = parseInt((document.getElementById('rhc-app-occupants') || {}).value, 10) || 1;
+          app.pets = (document.getElementById('rhc-app-pets') || {}).checked;
+        } else if (step === 3) {
+          app.notes = (document.getElementById('rhc-app-notes') || {}).value || '';
+        }
+        renderAppStep(step + 1, app);
+      });
+    }
+    if (step === 4) {
+      root.querySelector('#rhc-app-submit').addEventListener('click', function() {
+        submitApplication(app);
+      });
+    }
+  }
+
+  async function submitApplication(app) {
+    var btn = document.getElementById('rhc-app-submit');
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+    try {
+      if (!RHC.db) throw new Error('Database not ready');
+      var payload = {
+        name: app.name || '',
+        email: (app.email || '').trim(),
+        phone: app.phone || '',
+        moveIn: app.moveIn || '',
+        occupants: parseInt(app.occupants, 10) || 1,
+        pets: !!app.pets,
+        notes: app.notes || '',
+        status: 'new',
+        renterUid: (RHC.renter && RHC.renter.uid) || null,
+        createdAt: RHC.fb.firestore.FieldValue.serverTimestamp()
+      };
+      await RHC.db.collection('applications').add(payload);
+      // Show success screen
+      var body = document.getElementById('rhc-app-body');
+      if (body) {
+        body.innerHTML = '<div class="rhc-app-success">' +
+          '<svg viewBox="0 0 24 24" width="64" height="64" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>' +
+          '<h2>Application submitted!</h2>' +
+          '<p>We\'ll be in touch within 1 business day. Check your email for confirmation.</p>' +
+          '<button class="rhc-app-btn-primary" id="rhc-app-done" style="margin-top:18px;padding:12px 24px;border-radius:10px;background:#0A66FF;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:14px;">Done</button>' +
+        '</div>';
+        body.querySelector('#rhc-app-done').addEventListener('click', closeApplicationModal);
+      }
+      toast('Application submitted! We\'ll be in touch.');
+    } catch(e) {
+      console.error('RHC: submitApplication failed', e);
+      if (btn) { btn.disabled = false; btn.textContent = 'Submit application'; }
+      toast('Could not submit your application right now. Please try again.');
+    }
+  }
+
+  // ============ Terms & Privacy modals (FIX E13) ============
+  function showTermsModal() {
+    closeLegalModal();
+    var root = document.createElement('div');
+    root.id = 'rhc-legal-modal';
+    root.innerHTML = '<div class="rhc-legal-backdrop"><div class="rhc-legal-card">' +
+      '<button class="rhc-legal-close" aria-label="Close" id="rhc-legal-close">' + SVG.close + '</button>' +
+      '<h2>Terms of Service</h2>' +
+      '<p style="color:#64748B;font-size:12px">Last updated: September 2025</p>' +
+      '<h3>1. Acceptance of Terms</h3>' +
+      '<p>By accessing or using Rental Home Connect ("RHC", "we", "us"), you agree to be bound by these Terms of Service. If you do not agree, please do not use our services.</p>' +
+      '<h3>2. Rental Listings</h3>' +
+      '<p>RHC aggregates rental listings submitted by property owners and managers. We make no guarantees about the accuracy, availability, or condition of any listing. All listings are subject to change or removal without notice.</p>' +
+      '<h3>3. User Responsibilities</h3>' +
+      '<ul>' +
+        '<li>You agree to provide accurate, current information in all communications, applications, and account details.</li>' +
+        '<li>You will not use RHC for any unlawful purpose, including discrimination based on race, color, religion, sex, familial status, national origin, or disability.</li>' +
+        '<li>You will not harass, threaten, or spam property owners, agents, or other users.</li>' +
+        '<li>You are responsible for verifying all listing details before signing any lease agreement.</li>' +
+      '</ul>' +
+      '<h3>4. Applications & Communications</h3>' +
+      '<p>Submitting an application through RHC does not constitute a binding rental agreement. Property owners may decline applications at their discretion. RHC is not a party to any lease agreement between renters and property owners.</p>' +
+      '<h3>5. Prohibited Conduct</h3>' +
+      '<ul>' +
+        '<li>Posting fraudulent or misleading listings.</li>' +
+        '<li>Scraping, harvesting, or redistributing listing data without permission.</li>' +
+        '<li>Attempting to disrupt or compromise the security of our platform.</li>' +
+      '</ul>' +
+      '<h3>6. Limitation of Liability</h3>' +
+      '<p>RHC is provided "as is" without warranties of any kind. We are not liable for damages arising from your use of the platform, including any failed rental transactions, misrepresentations by property owners, or interruptions to service.</p>' +
+      '<h3>7. Modifications</h3>' +
+      '<p>We may update these Terms at any time. Continued use of RHC after changes constitutes acceptance of the updated Terms.</p>' +
+      '<h3>8. Contact</h3>' +
+      '<p>Questions about these Terms? Email us at rentalhomeconnects@gmail.com.</p>' +
+      '<button class="rhc-legal-btn" id="rhc-legal-ok">Close</button>' +
+    '</div></div>';
+    document.body.appendChild(root);
+    root.querySelector('#rhc-legal-close').addEventListener('click', closeLegalModal);
+    root.querySelector('#rhc-legal-ok').addEventListener('click', closeLegalModal);
+    root.querySelector('.rhc-legal-backdrop').addEventListener('click', function(e) {
+      if (e.target === e.currentTarget) closeLegalModal();
+    });
+  }
+
+  function showPrivacyModal() {
+    closeLegalModal();
+    var root = document.createElement('div');
+    root.id = 'rhc-legal-modal';
+    root.innerHTML = '<div class="rhc-legal-backdrop"><div class="rhc-legal-card">' +
+      '<button class="rhc-legal-close" aria-label="Close" id="rhc-legal-close">' + SVG.close + '</button>' +
+      '<h2>Privacy Policy</h2>' +
+      '<p style="color:#64748B;font-size:12px">Last updated: September 2025</p>' +
+      '<h3>1. Information We Collect</h3>' +
+      '<ul>' +
+        '<li><strong>Account information:</strong> name, email address, and password (encrypted) when you create an account.</li>' +
+        '<li><strong>Application details:</strong> phone, move-in date, occupants, pet info, and notes you submit on applications.</li>' +
+        '<li><strong>Chat messages:</strong> text, images, and metadata shared with our agents via the live chat widget.</li>' +
+        '<li><strong>Saved homes:</strong> listings you bookmark for later.</li>' +
+        '<li><strong>Usage data:</strong> pages visited, clicks, and approximate location (city-level) to improve our service.</li>' +
+      '</ul>' +
+      '<h3>2. How We Use Your Information</h3>' +
+      '<ul>' +
+        '<li>To connect you with property owners and our agents about rental inquiries and applications.</li>' +
+        '<li>To remember your saved homes and chat history across sessions.</li>' +
+        '<li>To improve our listings, search relevance, and user experience.</li>' +
+        '<li>To send important updates about your applications or account (you may opt out of marketing emails).</li>' +
+      '</ul>' +
+      '<h3>3. Cookies & Local Storage</h3>' +
+      '<p>RHC uses browser local storage and cookies to keep you signed in, remember your saved homes, and resume active chats. We do not use third-party tracking cookies for advertising.</p>' +
+      '<h3>4. Sharing Your Information</h3>' +
+      '<p>We share your application details and chat messages only with the property owners and agents involved in your rental inquiry. We never sell your personal information to third parties.</p>' +
+      '<h3>5. Data Storage & Security</h3>' +
+      '<p>Your data is stored in Firebase (Google Cloud) and Cloudinary for image uploads. We use industry-standard encryption in transit (HTTPS) and at rest. Despite these measures, no system is 100% secure.</p>' +
+      '<h3>6. Your Rights</h3>' +
+      '<ul>' +
+        '<li>Request a copy of the data we hold about you.</li>' +
+        '<li>Request correction or deletion of your data.</li>' +
+        '<li>Opt out of marketing emails at any time.</li>' +
+        '<li>Close your account, which removes your personal data within 30 days.</li>' +
+      '</ul>' +
+      '<h3>7. Children\'s Privacy</h3>' +
+      '<p>RHC is not directed to children under 18. We do not knowingly collect personal information from minors.</p>' +
+      '<h3>8. Contact</h3>' +
+      '<p>Privacy questions? Email rentalhomeconnects@gmail.com.</p>' +
+      '<button class="rhc-legal-btn" id="rhc-legal-ok">Close</button>' +
+    '</div></div>';
+    document.body.appendChild(root);
+    root.querySelector('#rhc-legal-close').addEventListener('click', closeLegalModal);
+    root.querySelector('#rhc-legal-ok').addEventListener('click', closeLegalModal);
+    root.querySelector('.rhc-legal-backdrop').addEventListener('click', function(e) {
+      if (e.target === e.currentTarget) closeLegalModal();
+    });
+  }
+
+  function closeLegalModal() {
+    var r = document.getElementById('rhc-legal-modal');
+    if (r) r.remove();
+  }
+
+  // Wire Terms/Privacy links across the document (FIX E13)
+  function setupTermsAndPrivacyLinks() {
+    try {
+      var links = document.querySelectorAll('a');
+      for (var i = 0; i < links.length; i++) {
+        var a = links[i];
+        var txt = (a.textContent || '').toLowerCase();
+        var href = a.getAttribute('href') || '';
+        if (txt === 'terms' || txt.indexOf('terms of') >= 0) {
+          if (a.getAttribute('data-rhc-legal-wired') === '1') continue;
+          a.setAttribute('data-rhc-legal-wired', '1');
+          a.setAttribute('href', 'javascript:void(0)');
+          a.addEventListener('click', function(e) { e.preventDefault(); showTermsModal(); });
+        } else if (txt === 'privacy' || txt.indexOf('privacy policy') >= 0) {
+          if (a.getAttribute('data-rhc-legal-wired') === '1') continue;
+          a.setAttribute('data-rhc-legal-wired', '1');
+          a.setAttribute('href', 'javascript:void(0)');
+          a.addEventListener('click', function(e) { e.preventDefault(); showPrivacyModal(); });
+        }
+      }
+    } catch(e) { console.warn('RHC: setupTermsAndPrivacyLinks failed', e); }
+  }
+
+  // ============ Favorites (FIX E14: persistence localStorage + Firestore) ============
+  async function toggleFavorite(listingId, heartBtn) {
+    if (!listingId) return;
+    var idx = RHC.savedHomes.indexOf(listingId);
+    if (idx >= 0) {
+      RHC.savedHomes.splice(idx, 1);
+      if (heartBtn) {
+        heartBtn.classList.remove('saved');
+        heartBtn.innerHTML = SVG.heartOutline;
+      }
+      toast('Removed from saved homes.');
+      if (RHC.renter && RHC.db) {
+        try { await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(listingId).delete(); }
+        catch(e) { console.warn('RHC: unsave remote failed', e); }
+      }
+    } else {
+      RHC.savedHomes.push(listingId);
+      if (heartBtn) {
+        heartBtn.classList.add('saved');
+        heartBtn.innerHTML = SVG.heart;
+      }
+      toast('Saved! Find it in your Saved Homes.');
+      if (RHC.renter && RHC.db) {
+        try {
+          await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(listingId)
+            .set({ savedAt: RHC.fb.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        } catch(e) { console.warn('RHC: save remote failed', e); }
+      }
+    }
+    localStorage.setItem('rhc_saved_homes', JSON.stringify(RHC.savedHomes));
+    refreshHeartIcons();
+  }
+
+  function refreshHeartIcons() {
+    try {
+      var hearts = document.querySelectorAll('.rhc-fav-btn');
+      for (var i = 0; i < hearts.length; i++) {
+        var h = hearts[i];
+        var card = h.closest('[data-rhc-listing-id]');
+        if (!card) continue;
+        var id = card.getAttribute('data-rhc-listing-id');
+        var isSaved = RHC.savedHomes.indexOf(id) >= 0;
+        h.classList.toggle('saved', isSaved);
+        h.innerHTML = isSaved ? SVG.heart : SVG.heartOutline;
+      }
+    } catch(e) { console.warn('RHC: refreshHeartIcons failed', e); }
+  }
+
+  // ============ Heart icon injection (MutationObserver) ============
+  var heartObserver = null;
+  function setupHeartObserver() {
+    if (heartObserver) return;
+    try {
+      heartObserver = new MutationObserver(function() { injectHeartIcons(); });
+      heartObserver.observe(document.body, { childList: true, subtree: true });
+    } catch(e) { console.warn('RHC: heart MutationObserver failed', e); }
+    injectHeartIcons();
+  }
+
+  function injectHeartIcons() {
+    try {
+      var cards = document.querySelectorAll('.rhc-listing-card, .group.cursor-pointer, [class*="group"][class*="cursor-pointer"]');
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        if (card.querySelector('.rhc-fav-btn')) continue;
+        var img = card.querySelector('img');
+        if (!img) continue;
+        var listingId = card.getAttribute('data-rhc-listing-id');
+        if (!listingId) {
+          var priceText = card.textContent || '';
+          if (priceText.indexOf('/mo') < 0 && priceText.indexOf('$') < 0) continue;
+          listingId = extractListingId(card);
+          card.setAttribute('data-rhc-listing-id', listingId);
+        }
+        var cardStyle = window.getComputedStyle(card);
+        if (cardStyle.position === 'static') card.style.position = 'relative';
+        var heart = document.createElement('button');
+        var isSaved = RHC.savedHomes.indexOf(listingId) >= 0;
+        heart.className = 'rhc-fav-btn' + (isSaved ? ' saved' : '');
+        heart.innerHTML = isSaved ? SVG.heart : SVG.heartOutline;
+        heart.setAttribute('aria-label', 'Save home');
+        (function(theCard, theHeart, theId) {
+          theHeart.addEventListener('click', function(e) {
+            e.preventDefault(); e.stopPropagation();
+            toggleFavorite(theId, theHeart);
+          });
+          theCard.addEventListener('click', function(e) {
+            if (e.target.closest('.rhc-fav-btn')) return;
+            e.preventDefault(); e.stopPropagation();
+            openDetailPage(theCard);
+          }, true);
+        })(card, heart, listingId);
+        var imgContainer = img.parentElement;
+        if (imgContainer) {
+          imgContainer.style.position = 'relative';
+          imgContainer.appendChild(heart);
+        }
+      }
+    } catch(e) { console.warn('RHC: injectHeartIcons failed', e); }
+  }
+
+  function extractListingId(card) {
+    var txt = card.textContent || '';
+    var addrMatch = txt.match(/(\d+\s+[A-Za-z\s]+(?:St|Ave|Blvd|Ln|Dr|Rd|Way|Ct|Pl|Ridge))/);
+    var priceMatch = txt.match(/\$([\d,]+)/);
+    if (addrMatch) return addrMatch[1].trim().toLowerCase().replace(/\s+/g, '-');
+    if (priceMatch) return 'home-' + priceMatch[1].replace(/,/g, '');
+    return 'home-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function extractListingData(card) {
+    var txt = (card.textContent || '').trim();
+    var img = card.querySelector('img');
+    var imgUrl = img ? (img.src || '') : '';
+    var priceMatch = txt.match(/\$([\d,]+)\s*\/mo/);
+    var price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, ''), 10) : 0;
+    var lines = txt.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    var address = '';
+    for (var i = 0; i < lines.length; i++) {
+      var L = lines[i];
+      if (L.indexOf('$') === 0 || /^(CONDO|HOUSE|TOWNHOUSE|APARTMENT|STUDIO)/.test(L)) continue;
+      if (/^\d+\s+[A-Z]/.test(L)) { address = L; break; }
+    }
+    if (!address && lines.length > 1) address = lines[1];
+    var bedsMatch = txt.match(/(\d+)\s*bd/);
+    var bathsMatch = txt.match(/(\d+)\s*ba/);
+    var sqftMatch = txt.match(/([\d,]+)\s*sqft/);
+    var beds = bedsMatch ? parseInt(bedsMatch[1], 10) : 0;
+    var baths = bathsMatch ? parseInt(bathsMatch[1], 10) : 0;
+    var sqft = sqftMatch ? parseInt(sqftMatch[1].replace(/,/g, ''), 10) : 0;
+    var type = 'House';
+    if (txt.indexOf('CONDO') >= 0) type = 'Condo';
+    else if (txt.indexOf('TOWNHOUSE') >= 0) type = 'Townhouse';
+    else if (txt.indexOf('APARTMENT') >= 0) type = 'Apartment';
+    else if (txt.indexOf('STUDIO') >= 0) type = 'Studio';
+    var cityMatch = txt.match(/([A-Z][a-zA-Z\s]+),\s([A-Z]{2})/);
+    var city = cityMatch ? cityMatch[1].trim() : '';
+    var state = cityMatch ? cityMatch[2].trim() : '';
+    return {
+      id: card.getAttribute('data-rhc-listing-id') || extractListingId(card),
+      img: imgUrl, images: [imgUrl, imgUrl, imgUrl, imgUrl],
+      price: price, beds: beds, baths: baths, sqft: sqft,
+      address: address, city: city, state: state, type: type,
+      amenities: ['Central AC','In-unit Laundry','Hardwood Floors','Stainless Appliances','Walk-in Closet','Private Patio','Garage','EV Charger'].slice(0, 4 + (price % 3)),
+      description: 'Stunning ' + type.toLowerCase() + ' in the heart of ' + (city || 'this vibrant neighborhood') + '. Floor-to-ceiling windows, chef\'s kitchen with quartz countertops, and a serene primary suite with spa bathroom. Walk to parks, cafes, and transit. Available now with flexible lease terms.',
+      yearBuilt: 1998 + (price % 26),
+      pets: price % 3 === 0 ? 'Cats & Dogs' : (price % 3 === 1 ? 'Cats Only' : 'No Pets'),
+      parking: price % 3 === 0 ? '2-car garage' : (price % 3 === 1 ? '1-car garage + driveway' : 'Street + permit')
+    };
+  }
+
+  // ============ Property detail page ============
+  function openDetailPage(card) {
+    var listingId = card.getAttribute('data-rhc-listing-id');
+    var listing = null;
+    if (listingId && rhcListings.length > 0) {
+      for (var i = 0; i < rhcListings.length; i++) {
+        if (rhcListings[i].id === listingId) { listing = rhcListings[i]; break; }
+      }
+    }
+    if (!listing) listing = extractListingData(card);
+    RHC.currentListing = listing;
+    var similar = findSimilarHomes(listing);
+
+    var overlay = document.createElement('div');
+    overlay.id = 'rhc-detail-overlay';
+    overlay.className = 'rhc-detail-overlay';
+    var galleryHtml = buildGalleryHtml(listing);
+    var amenitiesHtml = (listing.amenities || []).map(function(a) {
+      var icon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+      return '<span class="rhc-amenity">' + icon + ' ' + escapeHtml(a) + '</span>';
+    }).join('');
+    var similarHtml = similar.length > 0 ? similar.map(function(h) {
+      return '<div class="rhc-similar-card" onclick="RHC.openDetailById(\'' + escapeHtml(h.id) + '\')">' +
+        imgTag(h.img, (h.address || 'Rental home'), 'width:100%;height:140px;object-fit:cover') +
+        '<div class="info"><div class="price">$' + (h.price || 0).toLocaleString() + '/mo</div>' +
+        '<div class="addr">' + escapeHtml(h.address || '') + '</div>' +
+        '<div class="specs">' + (h.beds || 0) + ' bd - ' + (h.baths || 0) + ' ba - ' + (h.sqft || 0).toLocaleString() + ' sqft</div>' +
+        '</div></div>';
+    }).join('') : '<p style="color:#64748B;font-size:14px">No similar homes found in this area right now.</p>';
+
+    var agents = RHC.branding.tiktokAgents && RHC.branding.tiktokAgents.length ? RHC.branding.tiktokAgents : ['_christopherhayes', '_ethanhayes1'];
+    var agentHandle = agents[Math.abs((listing.id || 'a').charCodeAt(((listing.id || 'a').length - 1) || 0)) % agents.length] || agents[0];
+    var agentUrls = RHC.branding.tiktokAgentUrls || {};
+    var agentUrl = agentUrls[agentHandle] || ('https://www.tiktok.com/@' + agentHandle);
+    var agentName = agentHandle.replace(/^_/, '').replace(/^./, function(c){return c.toUpperCase();});
+
+    overlay.innerHTML =
+      '<div class="rhc-detail-header">' +
+        '<button class="rhc-detail-back" onclick="RHC.closeDetail()">' + SVG.arrowLeft + ' Back</button>' +
+        '<div style="margin-left:auto;display:flex;gap:8px">' +
+          '<button class="rhc-fav-btn ' + (RHC.savedHomes.indexOf(listing.id) >= 0 ? 'saved' : '') + '" id="rhc-detail-fav" style="position:static;width:36px;height:36px">' +
+            (RHC.savedHomes.indexOf(listing.id) >= 0 ? SVG.heart : SVG.heartOutline) +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="rhc-detail-container">' +
+        galleryHtml +
+        '<div class="rhc-detail-grid">' +
+          '<div class="rhc-detail-info">' +
+            '<h1>' + escapeHtml(listing.address) + '</h1>' +
+            '<div class="address">' + escapeHtml(listing.city) + (listing.state ? ', ' + escapeHtml(listing.state) : '') + ' - ' + escapeHtml(listing.type) + ' - Built ' + listing.yearBuilt + '</div>' +
+            '<div class="rhc-detail-stats">' +
+              '<div class="rhc-detail-stat"><div class="value">$' + (listing.price || 0).toLocaleString() + '</div><div class="label">/month</div></div>' +
+              '<div class="rhc-detail-stat"><div class="value">' + listing.beds + '</div><div class="label">beds</div></div>' +
+              '<div class="rhc-detail-stat"><div class="value">' + listing.baths + '</div><div class="label">baths</div></div>' +
+              '<div class="rhc-detail-stat"><div class="value">' + (listing.sqft || 0).toLocaleString() + '</div><div class="label">sqft</div></div>' +
+            '</div>' +
+            '<div class="rhc-detail-section"><h2>About this home</h2><p>' + escapeHtml(listing.description) + '</p></div>' +
+            '<div class="rhc-detail-section"><h2>Amenities</h2><div class="rhc-amenities">' + amenitiesHtml + '</div></div>' +
+            '<div class="rhc-detail-section"><h2>Property details</h2>' +
+              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:14px;color:#1A1A18">' +
+                '<div><strong>Type:</strong> ' + escapeHtml(listing.type) + '</div>' +
+                '<div><strong>Year built:</strong> ' + listing.yearBuilt + '</div>' +
+                '<div><strong>Pets:</strong> ' + escapeHtml(listing.pets) + '</div>' +
+                '<div><strong>Parking:</strong> ' + escapeHtml(listing.parking) + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="rhc-detail-section"><h2>Location</h2>' +
+              '<iframe class="rhc-map" src="https://www.google.com/maps?q=' + encodeURIComponent(listing.address + ' ' + listing.city + ' ' + listing.state) + '&output=embed" loading="lazy"></iframe>' +
+            '</div>' +
+            '<div class="rhc-detail-section"><h2>Similar homes nearby</h2><div class="rhc-similar">' + similarHtml + '</div></div>' +
+          '</div>' +
+          '<div>' +
+            '<div class="rhc-agent-card">' +
+              '<div class="rhc-agent-avatar">' + escapeHtml(agentName.slice(0, 1)) + '</div>' +
+              '<div class="rhc-agent-info">' +
+                '<div class="name">' + escapeHtml(agentName) + '</div>' +
+                '<div class="role">Property Manager</div>' +
+                '<div class="contact">' + SVG.tiktok + ' <a href="' + escapeHtml(agentUrl) + '" target="_blank" rel="noopener">@' + escapeHtml(agentHandle) + '</a></div>' +
+              '</div>' +
+            '</div>' +
+            '<button class="rhc-agent-btn" style="width:100%;margin-top:12px;padding:14px;justify-content:center" onclick="RHC.contactAgent(\'' + escapeHtml(listing.address) + '\')">' + SVG.chat + ' Contact Agent</button>' +
+            '<div style="margin-top:16px;background:#F5F1EB;border-radius:12px;padding:14px;font-size:13px;color:#64748B">' +
+              '<strong style="color:#1A1A18">Quick apply:</strong> Most tenants hear back within 2 minutes during business hours. Chat live with our team to schedule a tour.' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    document.body.style.overflow = 'hidden';
+
+    var favBtn = overlay.querySelector('#rhc-detail-fav');
+    if (favBtn) {
+      favBtn.addEventListener('click', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        toggleFavorite(listing.id, favBtn);
+      });
+    }
+    var mainImg = overlay.querySelector('.rhc-detail-gallery-main img');
+    if (mainImg) {
+      mainImg.addEventListener('click', function() { window.open(mainImg.src, '_blank'); });
+    }
+  }
+
+  RHC.closeDetail = function() {
+    var overlay = document.getElementById('rhc-detail-overlay');
+    if (overlay) overlay.remove();
+    document.body.style.overflow = '';
+    RHC.currentListing = null;
+  };
+
+  RHC.openDetailById = function(id) {
+    var card;
+    try { card = document.querySelector('[data-rhc-listing-id="' + CSS.escape(id) + '"]'); } catch(e) { card = null; }
+    if (card) {
+      RHC.closeDetail();
+      setTimeout(function() { openDetailPage(card); }, 100);
+    } else {
+      toast('This home is no longer in the current view. Try browsing all homes.');
+    }
+  };
+
+  function buildGalleryHtml(listing) {
+    var imgs = listing.images || [];
+    var main = imgs[0] || DEFAULT_HOUSE_IMG;
+    var html = '<div class="rhc-detail-gallery">' +
+      '<div class="rhc-detail-gallery-main">' + imgTag(main, listing.address, 'width:100%;height:100%;object-fit:cover') + '</div>';
+    if (imgs.length > 1) {
+      html += '<div class="rhc-detail-gallery-thumbs">';
+      for (var i = 1; i < Math.min(3, imgs.length); i++) {
+        html += '<div class="rhc-detail-gallery-thumb">' + imgTag(imgs[i], listing.address, 'width:100%;height:100%;object-fit:cover') + '</div>';
+      }
+      if (imgs.length > 3) {
+        html += '<div class="rhc-detail-gallery-thumb">' + imgTag(imgs[2], listing.address, 'width:100%;height:100%;object-fit:cover') + '<div class="rhc-detail-gallery-more">+' + (imgs.length - 2) + '</div></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function findSimilarHomes(currentListing) {
+    // Look up similar homes directly from rhcListings (Firestore source of truth)
+    var similar = [];
+    if (rhcListings && rhcListings.length) {
+      for (var i = 0; i < rhcListings.length; i++) {
+        var l = rhcListings[i];
+        if (l.id === currentListing.id) continue;
+        if ((l.city || '') === (currentListing.city || '') && similar.length < 4) {
+          similar.push({
+            id: l.id || '',
+            img: (l.images && l.images[0]) || DEFAULT_HOUSE_IMG,
+            price: l.price || 0,
+            address: l.address || '',
+            beds: l.beds || 0,
+            baths: l.baths || 0,
+            sqft: l.sqft || 0
+          });
+        }
+      }
+    }
+    // Fall back to DOM-parsed cards if Firestore is empty
+    if (similar.length < 4) {
+      var cards = document.querySelectorAll('[data-rhc-listing-id]');
+      for (var j = 0; j < cards.length; j++) {
+        var d = extractListingData(cards[j]);
+        if (d.id !== currentListing.id && similar.findIndex(function(s){return s.id === d.id;}) < 0) {
+          similar.push(d);
+          if (similar.length >= 4) break;
+        }
+      }
+    }
+    return similar.slice(0, 4);
+  }
+
+  RHC.contactAgent = function(address) {
+    RHC.closeDetail();
+    var fab = document.querySelector('.rhc-chat-fab');
+    if (fab && !chatOpen) fab.click();
+    setTimeout(function() {
+      var msg = "Hi, I'm interested in " + address + ". Is it still available? I'd like to schedule a tour.";
+      prefillChat(msg);
+      if (RHC.currentChatId) sendVisitorMessage(msg);
+    }, 400);
+  };
+
+  // ============ Saved homes page ============
+  function showSavedHomesPage() {
+    var existing = document.getElementById('rhc-saved-overlay');
+    if (existing) existing.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'rhc-saved-overlay';
+    overlay.className = 'rhc-saved-overlay';
+    overlay.innerHTML = '<div style="max-width:1200px;margin:0 auto;padding:24px 16px">' +
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">' +
+        '<button id="rhc-saved-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:#1A1A18;display:flex;align-items:center">' + SVG.arrowLeft + '</button>' +
+        '<h1 style="font-family:Cormorant Garamond,serif;font-size:32px;color:#1A1A18;font-weight:600">Saved Homes</h1>' +
+        '<span id="rhc-saved-count" style="font-size:14px;color:#64748B;margin-left:auto"></span>' +
+      '</div>' +
+      '<div class="rhc-saved-grid" id="rhc-saved-grid"></div>' +
+      '<div id="rhc-saved-empty" style="display:none;text-align:center;padding:60px 20px;color:#64748B">' +
+        '<svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;margin-bottom:16px"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' +
+        '<h3 style="color:#1A1A18;font-size:18px;margin-bottom:6px">No saved homes yet</h3>' +
+        '<p>Tap the heart icon on any listing to save it here.</p>' +
+      '</div>' +
+    '</div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('#rhc-saved-close').addEventListener('click', function() { overlay.remove(); });
+    renderSavedHomesGrid();
+  }
+  window.showSavedHomesPage = showSavedHomesPage;
+
+  function renderSavedHomesGrid() {
+    var grid = document.getElementById('rhc-saved-grid');
+    var empty = document.getElementById('rhc-saved-empty');
+    var count = document.getElementById('rhc-saved-count');
+    if (!grid) return;
+    if (RHC.savedHomes.length === 0) {
+      grid.style.display = 'none'; empty.style.display = 'block'; count.textContent = '';
+      return;
+    }
+    grid.style.display = 'grid'; empty.style.display = 'none';
+    count.textContent = RHC.savedHomes.length + ' saved';
+    grid.innerHTML = RHC.savedHomes.map(function(id) {
+      // Try to find the full listing from Firestore cache first
+      var listing = null;
+      if (rhcListings && rhcListings.length) {
+        for (var i = 0; i < rhcListings.length; i++) {
+          if (rhcListings[i].id === id) { listing = rhcListings[i]; break; }
+        }
+      }
+      if (listing) {
+        var img = (listing.images && listing.images[0]) || DEFAULT_HOUSE_IMG;
+        return '<div class="rhc-saved-card" onclick="RHC.openDetailById(\'' + escapeHtml(id) + '\')">' +
+          imgTag(img, (listing.address || 'Saved home'), 'width:100%;height:160px;object-fit:cover') +
+          '<div class="body"><div class="price">$' + ((listing.price || 0).toLocaleString()) + '/mo</div>' +
+          '<div class="addr">' + escapeHtml(listing.address || '') + '</div>' +
+          '<div class="specs">' + (listing.beds || 0) + ' bd - ' + (listing.baths || 0) + ' ba - ' + ((listing.sqft || 0).toLocaleString()) + ' sqft</div>' +
+          '<button class="rhc-account-btn ghost" style="font-size:11px;padding:4px 10px;height:auto;margin-top:6px" onclick="event.stopPropagation();RHC.removeSaved(\'' + escapeHtml(id) + '\')">Remove</button>' +
+          '</div></div>';
+      }
+      // Fallback: find card in DOM
+      var card;
+      try { card = document.querySelector('[data-rhc-listing-id="' + CSS.escape(id) + '"]'); } catch(e) { card = null; }
+      if (card) {
+        var d = extractListingData(card);
+        return '<div class="rhc-saved-card" onclick="RHC.openDetailById(\'' + escapeHtml(id) + '\')">' +
+          imgTag(d.img, (d.address || 'Saved home'), 'width:100%;height:160px;object-fit:cover') +
+          '<div class="body"><div class="price">$' + (d.price || 0).toLocaleString() + '/mo</div>' +
+          '<div class="addr">' + escapeHtml(d.address || '') + '</div>' +
+          '<div class="specs">' + d.beds + ' bd - ' + d.baths + ' ba - ' + (d.sqft || 0).toLocaleString() + ' sqft</div>' +
+          '<button class="rhc-account-btn ghost" style="font-size:11px;padding:4px 10px;height:auto;margin-top:6px" onclick="event.stopPropagation();RHC.removeSaved(\'' + escapeHtml(id) + '\')">Remove</button>' +
+          '</div></div>';
+      }
+      return '<div class="rhc-saved-card"><div class="body"><div class="addr">' + escapeHtml(id) + '</div>' +
+        '<div class="specs" style="margin:8px 0">Saved home (not in current view)</div>' +
+        '<button class="rhc-account-btn ghost" style="font-size:11px;padding:4px 10px;height:auto" onclick="RHC.removeSaved(\'' + escapeHtml(id) + '\')">Remove</button>' +
+        '</div></div>';
+    }).join('');
+  }
+
+  RHC.removeSaved = async function(id) {
+    RHC.savedHomes = RHC.savedHomes.filter(function(x) { return x !== id; });
+    localStorage.setItem('rhc_saved_homes', JSON.stringify(RHC.savedHomes));
+    if (RHC.renter && RHC.db) {
+      try { await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(id).delete(); }
+      catch(e) { console.warn('RHC: unsave remote failed', e); }
+    }
+    renderSavedHomesGrid();
+    refreshHeartIcons();
+  };
+
   // ============ Auth modal (Sign In / Sign Up / Google) ============
   function showAuthModal(mode) {
     closeAuthModal();
@@ -605,7 +1865,7 @@ Error generating stack: `+o.message+`
       '</div>' +
       '<div id="rhc-auth-fields"></div>' +
       '<button class="rhc-auth-btn" id="rhc-auth-submit">' + (mode === 'signup' ? 'Create account' : 'Sign in') + '</button>' +
-      '<div style="text-align:center;margin-top:14px;font-size:12px;color:#64748B">By continuing you agree to our <a href="#" style="color:#0A66FF">Terms</a> & <a href="#" style="color:#0A66FF">Privacy</a>.</div>' +
+      '<div style="text-align:center;margin-top:14px;font-size:12px;color:#64748B">By continuing you agree to our <a href="javascript:void(0)" id="rhc-terms-link" style="color:#0A66FF">Terms</a> & <a href="javascript:void(0)" id="rhc-privacy-link" style="color:#0A66FF">Privacy</a>.</div>' +
     '</div></div>';
     document.body.appendChild(root);
     renderAuthFields(mode);
@@ -622,7 +1882,11 @@ Error generating stack: `+o.message+`
       });
     });
     root.querySelector('#rhc-google-btn').addEventListener('click', function(e) { e.preventDefault(); signInWithGoogle(); });
-    // CRITICAL: submit handler does NOT pass the event to doSignUp/doSignIn
+    // FIX E13: wire Terms/Privacy links in auth modal
+    var termsLink = root.querySelector('#rhc-terms-link');
+    var privacyLink = root.querySelector('#rhc-privacy-link');
+    if (termsLink) termsLink.addEventListener('click', function(e) { e.preventDefault(); showTermsModal(); });
+    if (privacyLink) privacyLink.addEventListener('click', function(e) { e.preventDefault(); showPrivacyModal(); });
     root.querySelector('#rhc-auth-submit').addEventListener('click', function(e) {
       e.preventDefault();
       var activeTab = root.querySelector('.rhc-auth-tab.active');
@@ -634,6 +1898,9 @@ Error generating stack: `+o.message+`
         e.preventDefault();
         root.querySelector('#rhc-auth-submit').click();
       }
+    });
+    root.querySelector('.rhc-auth-backdrop').addEventListener('click', function(e) {
+      if (e.target === e.currentTarget) closeAuthModal();
     });
   }
 
@@ -672,8 +1939,6 @@ Error generating stack: `+o.message+`
     var btn = document.getElementById('rhc-auth-submit');
     btn.disabled = true; btn.textContent = 'Creating...';
     try {
-      // CRITICAL FIX: Check if email is already registered BEFORE createUserWithEmailAndPassword.
-      // Firebase's raw "email-already-in-use" error is unfriendly to visitors.
       var methods = [];
       try {
         var result = await RHC.auth.fetchSignInMethodsForEmail(email.trim());
@@ -691,10 +1956,10 @@ Error generating stack: `+o.message+`
         createdAt: RHC.fb.firestore.FieldValue.serverTimestamp()
       });
       RHC.renter = { uid: cred.user.uid, email: email.trim(), name: name.trim() };
+      localStorage.setItem('rhc_renter_cache', JSON.stringify(RHC.renter));
       closeAuthModal();
       toast('Welcome, ' + name.trim().split(' ')[0] + '! Your account is ready.');
       updateAccountButton();
-      // Sync local saved homes to the new account
       if (RHC.savedHomes.length > 0) {
         for (var i = 0; i < RHC.savedHomes.length; i++) {
           try {
@@ -781,7 +2046,7 @@ Error generating stack: `+o.message+`
     toast('Signed out.');
   }
 
-  // ============ Account button (next to "Start Application") ============
+  // ============ Account button ============
   function injectAccountButton() {
     var existing = document.getElementById('rhc-account-btn-wrap');
     if (existing) { updateAccountButton(); return true; }
@@ -792,7 +2057,6 @@ Error generating stack: `+o.message+`
       if (t.indexOf('Start Application') >= 0 || t.indexOf('Apply Now') >= 0) { target = headerBtns[i]; break; }
     }
     if (!target) {
-      // Fall back to header's last button
       var hamburger = document.querySelector('button[aria-label="Open menu"]');
       if (hamburger) target = hamburger;
     }
@@ -843,503 +2107,46 @@ Error generating stack: `+o.message+`
     }
   }
 
-  // ============ Favorites: heart icons via MutationObserver ============
-  // (Logo/nav are NOT injected here — the bundle handles those.)
-  var heartObserver = null;
-  function setupHeartObserver() {
-    if (heartObserver) return;
-    try {
-      heartObserver = new MutationObserver(function() { injectHeartIcons(); });
-      heartObserver.observe(document.body, { childList: true, subtree: true });
-    } catch(e) { console.warn('RHC: heart MutationObserver failed', e); }
-    injectHeartIcons();
-  }
-
-  function injectHeartIcons() {
-    // Target both React-rendered cards AND overlay-rendered cards
-    var cards = document.querySelectorAll('.group.cursor-pointer, [class*="group"][class*="cursor-pointer"], .rhc-listing-card');
-    for (var i = 0; i < cards.length; i++) {
-      var card = cards[i];
-      if (card.querySelector('.rhc-fav-btn')) continue;
-      var img = card.querySelector('img');
-      if (!img) continue;
-      // Skip if no price text (not a listing card) — but allow overlay cards which already have data-rhc-listing-id
-      var listingId = card.getAttribute('data-rhc-listing-id');
-      if (!listingId) {
-        var priceText = card.textContent || '';
-        if (priceText.indexOf('/mo') < 0) continue;
-        listingId = extractListingId(card);
-        card.setAttribute('data-rhc-listing-id', listingId);
-      }
-
-      var cardStyle = window.getComputedStyle(card);
-      if (cardStyle.position === 'static') card.style.position = 'relative';
-
-      var heart = document.createElement('button');
-      var isSaved = RHC.savedHomes.indexOf(listingId) >= 0;
-      heart.className = 'rhc-fav-btn' + (isSaved ? ' saved' : '');
-      heart.innerHTML = isSaved ? SVG.heart : SVG.heartOutline;
-      heart.setAttribute('aria-label', 'Save home');
-      heart.addEventListener('click', function(e) {
-        e.preventDefault(); e.stopPropagation();
-        var cid = card.getAttribute('data-rhc-listing-id');
-        toggleFavorite(cid, heart);
-      });
-      var imgContainer = img.parentElement;
-      if (imgContainer) {
-        imgContainer.style.position = 'relative';
-        imgContainer.appendChild(heart);
-      }
-
-      // Click card -> open detail page (capture phase)
-      card.addEventListener('click', function(e) {
-        if (e.target.closest('.rhc-fav-btn')) return;
-        e.preventDefault(); e.stopPropagation();
-        openDetailPage(card);
-      }, true);
-    }
-  }
-
-  function extractListingId(card) {
-    var txt = card.textContent || '';
-    var addrMatch = txt.match(/(\d+\s+[A-Za-z\s]+(?:St|Ave|Blvd|Ln|Dr|Rd|Way|Ct|Pl|Ridge))/);
-    var priceMatch = txt.match(/\$([\d,]+)/);
-    if (addrMatch) return addrMatch[1].trim().toLowerCase().replace(/\s+/g, '-');
-    if (priceMatch) return 'home-' + priceMatch[1].replace(/,/g, '');
-    return 'home-' + Math.random().toString(36).slice(2, 10);
-  }
-
-  function extractListingData(card) {
-    var txt = (card.textContent || '').trim();
-    var img = card.querySelector('img');
-    var imgUrl = img ? (img.src || '') : '';
-    var priceMatch = txt.match(/\$([\d,]+)\s*\/mo/);
-    var price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : 0;
-    var lines = txt.split('\n').map(function(s){return s.trim();}).filter(Boolean);
-    var address = '';
-    for (var i = 0; i < lines.length; i++) {
-      var L = lines[i];
-      if (L.indexOf('$') === 0 || /^(CONDO|HOUSE|TOWNHOUSE|APARTMENT|STUDIO)/.test(L)) continue;
-      if (/^\d+\s+[A-Z]/.test(L)) { address = L; break; }
-    }
-    if (!address && lines.length > 1) address = lines[1];
-    var bedsMatch = txt.match(/(\d+)\s*bd/);
-    var bathsMatch = txt.match(/(\d+)\s*ba/);
-    var sqftMatch = txt.match(/([\d,]+)\s*sqft/);
-    var beds = bedsMatch ? parseInt(bedsMatch[1]) : 0;
-    var baths = bathsMatch ? parseInt(bathsMatch[1]) : 0;
-    var sqft = sqftMatch ? parseInt(sqftMatch[1].replace(/,/g, '')) : 0;
-    var type = 'House';
-    if (txt.indexOf('CONDO') >= 0) type = 'Condo';
-    else if (txt.indexOf('TOWNHOUSE') >= 0) type = 'Townhouse';
-    else if (txt.indexOf('APARTMENT') >= 0) type = 'Apartment';
-    else if (txt.indexOf('STUDIO') >= 0) type = 'Studio';
-    var cityMatch = txt.match(/([A-Z][a-zA-Z\s]+),\s([A-Z]{2})/);
-    var city = cityMatch ? cityMatch[1].trim() : '';
-    var state = cityMatch ? cityMatch[2].trim() : '';
-    return {
-      id: card.getAttribute('data-rhc-listing-id') || extractListingId(card),
-      img: imgUrl, images: [imgUrl, imgUrl, imgUrl, imgUrl],
-      price: price, beds: beds, baths: baths, sqft: sqft,
-      address: address, city: city, state: state, type: type,
-      amenities: ['Central AC','In-unit Laundry','Hardwood Floors','Stainless Appliances','Walk-in Closet','Private Patio','Garage','EV Charger'].slice(0, 4 + (price % 3)),
-      description: 'Stunning ' + type.toLowerCase() + ' in the heart of ' + (city || 'this vibrant neighborhood') + '. Floor-to-ceiling windows, chef\'s kitchen with quartz countertops, and a serene primary suite with spa bathroom. Walk to parks, cafes, and transit. Available now with flexible lease terms.',
-      yearBuilt: 1998 + (price % 26),
-      pets: price % 3 === 0 ? 'Cats & Dogs' : (price % 3 === 1 ? 'Cats Only' : 'No Pets'),
-      parking: price % 3 === 0 ? '2-car garage' : (price % 3 === 1 ? '1-car garage + driveway' : 'Street + permit')
-    };
-  }
-
-  async function toggleFavorite(listingId, heartBtn) {
-    if (!listingId) return;
-    var idx = RHC.savedHomes.indexOf(listingId);
-    if (idx >= 0) {
-      RHC.savedHomes.splice(idx, 1);
-      heartBtn.classList.remove('saved');
-      heartBtn.innerHTML = SVG.heartOutline;
-      toast('Removed from saved homes.');
-      if (RHC.renter && RHC.db) {
-        try { await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(listingId).delete(); }
-        catch(e) { console.warn('RHC: unsave remote failed', e); }
-      }
-    } else {
-      RHC.savedHomes.push(listingId);
-      heartBtn.classList.add('saved');
-      heartBtn.innerHTML = SVG.heart;
-      toast('Saved! Find it in your Saved Homes.');
-      if (RHC.renter && RHC.db) {
-        try {
-          await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(listingId)
-            .set({ savedAt: RHC.fb.firestore.FieldValue.serverTimestamp() }, { merge: true });
-        } catch(e) { console.warn('RHC: save remote failed', e); }
-      }
-    }
-    localStorage.setItem('rhc_saved_homes', JSON.stringify(RHC.savedHomes));
-  }
-
-  function refreshHeartIcons() {
-    var hearts = document.querySelectorAll('.rhc-fav-btn');
-    hearts.forEach(function(h) {
-      var card = h.closest('[data-rhc-listing-id]');
-      if (!card) return;
-      var id = card.getAttribute('data-rhc-listing-id');
-      var isSaved = RHC.savedHomes.indexOf(id) >= 0;
-      h.classList.toggle('saved', isSaved);
-      h.innerHTML = isSaved ? SVG.heart : SVG.heartOutline;
-    });
-  }
-
-  // ============ Property detail page (full-screen overlay) ============
-  function openDetailPage(card) {
-    // FIX: If the card has a data-rhc-listing-id, look up the full listing from Firestore data.
-    // This gives us all 4 images + complete metadata instead of parsing DOM text.
-    var listingId = card.getAttribute('data-rhc-listing-id');
-    var listing = null;
-    if (listingId && rhcListings.length > 0) {
-      for (var i = 0; i < rhcListings.length; i++) {
-        if (rhcListings[i].id === listingId) { listing = rhcListings[i]; break; }
-      }
-    }
-    if (!listing) listing = extractListingData(card);
-    RHC.currentListing = listing;
-    var similar = findSimilarHomes(listing);
-
-    var overlay = document.createElement('div');
-    overlay.id = 'rhc-detail-overlay';
-    overlay.className = 'rhc-detail-overlay';
-    var galleryHtml = buildGalleryHtml(listing);
-    var amenitiesHtml = listing.amenities.map(function(a) {
-      var icon = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
-      return '<span class="rhc-amenity">' + icon + ' ' + escapeHtml(a) + '</span>';
-    }).join('');
-    var similarHtml = similar.length > 0 ? similar.map(function(h) {
-      return '<div class="rhc-similar-card" onclick="RHC.openDetailById(\'' + escapeHtml(h.id) + '\')">' +
-        '<img src="' + escapeHtml(h.img) + '" loading="lazy">' +
-        '<div class="info"><div class="price">$' + (h.price || 0).toLocaleString() + '/mo</div>' +
-        '<div class="addr">' + escapeHtml(h.address || '') + '</div>' +
-        '<div class="specs">' + (h.beds || 0) + ' bd - ' + (h.baths || 0) + ' ba - ' + (h.sqft || 0).toLocaleString() + ' sqft</div>' +
-        '</div></div>';
-    }).join('') : '<p style="color:#64748B;font-size:14px">No similar homes found in this area right now.</p>';
-
-    // Cycle through the two real TikTok agent handles
-    var agents = RHC.branding.tiktokAgents && RHC.branding.tiktokAgents.length ? RHC.branding.tiktokAgents : ['_christopherhayes', '_ethanhayes1'];
-    var agentHandle = agents[Math.abs(listing.id.charCodeAt(listing.id.length - 1)) % agents.length] || agents[0];
-    var agentUrls = RHC.branding.tiktokAgentUrls || {};
-    var agentUrl = agentUrls[agentHandle] || ('https://www.tiktok.com/@' + agentHandle);
-    var agentName = agentHandle.replace(/^_/, '').replace(/^./, function(c){return c.toUpperCase();});
-
-    overlay.innerHTML =
-      '<div class="rhc-detail-header">' +
-        '<button class="rhc-detail-back" onclick="RHC.closeDetail()">' + SVG.arrowLeft + ' Back</button>' +
-        '<div style="margin-left:auto;display:flex;gap:8px">' +
-          '<button class="rhc-fav-btn ' + (RHC.savedHomes.indexOf(listing.id) >= 0 ? 'saved' : '') + '" id="rhc-detail-fav" style="position:static;width:36px;height:36px">' +
-            (RHC.savedHomes.indexOf(listing.id) >= 0 ? SVG.heart : SVG.heartOutline) +
-          '</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="rhc-detail-container">' +
-        galleryHtml +
-        '<div class="rhc-detail-grid">' +
-          '<div class="rhc-detail-info">' +
-            '<h1>' + escapeHtml(listing.address) + '</h1>' +
-            '<div class="address">' + escapeHtml(listing.city) + (listing.state ? ', ' + escapeHtml(listing.state) : '') + ' - ' + escapeHtml(listing.type) + ' - Built ' + listing.yearBuilt + '</div>' +
-            '<div class="rhc-detail-stats">' +
-              '<div class="rhc-detail-stat"><div class="value">$' + (listing.price || 0).toLocaleString() + '</div><div class="label">/month</div></div>' +
-              '<div class="rhc-detail-stat"><div class="value">' + listing.beds + '</div><div class="label">beds</div></div>' +
-              '<div class="rhc-detail-stat"><div class="value">' + listing.baths + '</div><div class="label">baths</div></div>' +
-              '<div class="rhc-detail-stat"><div class="value">' + (listing.sqft || 0).toLocaleString() + '</div><div class="label">sqft</div></div>' +
-            '</div>' +
-            '<div class="rhc-detail-section"><h2>About this home</h2><p>' + escapeHtml(listing.description) + '</p></div>' +
-            '<div class="rhc-detail-section"><h2>Amenities</h2><div class="rhc-amenities">' + amenitiesHtml + '</div></div>' +
-            '<div class="rhc-detail-section"><h2>Property details</h2>' +
-              '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 24px;font-size:14px;color:#1A1A18">' +
-                '<div><strong>Type:</strong> ' + escapeHtml(listing.type) + '</div>' +
-                '<div><strong>Year built:</strong> ' + listing.yearBuilt + '</div>' +
-                '<div><strong>Pets:</strong> ' + escapeHtml(listing.pets) + '</div>' +
-                '<div><strong>Parking:</strong> ' + escapeHtml(listing.parking) + '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div class="rhc-detail-section"><h2>Location</h2>' +
-              '<iframe class="rhc-map" src="https://www.google.com/maps?q=' + encodeURIComponent(listing.address + ' ' + listing.city + ' ' + listing.state) + '&output=embed" loading="lazy"></iframe>' +
-            '</div>' +
-            '<div class="rhc-detail-section"><h2>Similar homes nearby</h2><div class="rhc-similar">' + similarHtml + '</div></div>' +
-          '</div>' +
-          '<div>' +
-            '<div class="rhc-agent-card">' +
-              '<div class="rhc-agent-avatar">' + escapeHtml(agentName.slice(0, 1)) + '</div>' +
-              '<div class="rhc-agent-info">' +
-                '<div class="name">' + escapeHtml(agentName) + '</div>' +
-                '<div class="role">Property Manager</div>' +
-                '<div class="contact">' + SVG.tiktok + ' <a href="' + escapeHtml(agentUrl) + '" target="_blank" rel="noopener">@' + escapeHtml(agentHandle) + '</a></div>' +
-              '</div>' +
-            '</div>' +
-            '<button class="rhc-agent-btn" style="width:100%;margin-top:12px;padding:14px;justify-content:center" onclick="RHC.contactAgent(\'' + escapeHtml(listing.address) + '\')">' + SVG.chat + ' Contact Agent</button>' +
-            '<div style="margin-top:16px;background:#F5F1EB;border-radius:12px;padding:14px;font-size:13px;color:#64748B">' +
-              '<strong style="color:#1A1A18">Quick apply:</strong> Most tenants hear back within 2 minutes during business hours. Chat live with our team to schedule a tour.' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    document.body.style.overflow = 'hidden';
-
-    var favBtn = overlay.querySelector('#rhc-detail-fav');
-    favBtn.addEventListener('click', function(e) {
-      e.preventDefault(); e.stopPropagation();
-      toggleFavorite(listing.id, favBtn);
-    });
-    var mainImg = overlay.querySelector('.rhc-detail-gallery-main img');
-    if (mainImg) {
-      mainImg.addEventListener('click', function() { window.open(mainImg.src, '_blank'); });
-    }
-  }
-
-  RHC.closeDetail = function() {
-    var overlay = document.getElementById('rhc-detail-overlay');
-    if (overlay) overlay.remove();
-    document.body.style.overflow = '';
-    RHC.currentListing = null;
-  };
-
-  RHC.openDetailById = function(id) {
-    var card;
-    try { card = document.querySelector('[data-rhc-listing-id="' + CSS.escape(id) + '"]'); } catch(e) { card = null; }
-    if (card) {
-      RHC.closeDetail();
-      setTimeout(function() { openDetailPage(card); }, 100);
-    } else {
-      toast('This home is no longer in the current view. Try browsing all homes.');
-    }
-  };
-
-  function buildGalleryHtml(listing) {
-    var imgs = listing.images || [];
-    var main = imgs[0] || 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=800&q=70&auto=format&fit=crop';
-    var html = '<div class="rhc-detail-gallery">' +
-      '<div class="rhc-detail-gallery-main"><img src="' + escapeHtml(main) + '" alt="' + escapeHtml(listing.address) + '"></div>';
-    if (imgs.length > 1) {
-      html += '<div class="rhc-detail-gallery-thumbs">';
-      for (var i = 1; i < Math.min(3, imgs.length); i++) {
-        html += '<div class="rhc-detail-gallery-thumb"><img src="' + escapeHtml(imgs[i]) + '" loading="lazy"></div>';
-      }
-      if (imgs.length > 3) {
-        html += '<div class="rhc-detail-gallery-thumb"><img src="' + escapeHtml(imgs[2]) + '" loading="lazy"><div class="rhc-detail-gallery-more">+' + (imgs.length - 2) + '</div></div>';
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function findSimilarHomes(currentListing) {
-    var cards = document.querySelectorAll('[data-rhc-listing-id]');
-    var similar = [];
-    for (var i = 0; i < cards.length; i++) {
-      var data = extractListingData(cards[i]);
-      if (data.id !== currentListing.id && data.city === currentListing.city) similar.push(data);
-      if (similar.length >= 4) break;
-    }
-    if (similar.length < 4) {
-      for (var j = 0; j < cards.length; j++) {
-        var d = extractListingData(cards[j]);
-        if (d.id !== currentListing.id && similar.findIndex(function(s){return s.id === d.id;}) < 0) {
-          similar.push(d);
-          if (similar.length >= 4) break;
-        }
-      }
-    }
-    return similar.slice(0, 4);
-  }
-
-  RHC.contactAgent = function(address) {
-    RHC.closeDetail();
-    var fab = document.querySelector('.rhc-chat-fab');
-    if (fab && !chatOpen) fab.click();
-    setTimeout(function() {
-      var msg = "Hi, I'm interested in " + address + ". Is it still available? I'd like to schedule a tour.";
-      prefillChat(msg);
-      if (RHC.currentChatId) sendVisitorMessage(msg);
-    }, 400);
-  };
-
-  // ============ Filter bar ============
-  function injectFilterBar() {
-    if (document.getElementById('rhc-filter-bar')) return true;
-    var listingsEl = document.getElementById('listings');
-    if (!listingsEl) return false;
-    var bar = document.createElement('div');
-    bar.id = 'rhc-filter-bar';
-    bar.className = 'rhc-filter-bar';
-    bar.innerHTML =
-      '<div class="rhc-filter-field"><label>Price range</label><div class="rhc-price-range">' +
-        '<input type="range" id="rhc-price-min" min="0" max="10000" step="500" value="0">' +
-        '<span class="value" id="rhc-price-min-val">$0</span><span style="color:#94A3B8">-</span>' +
-        '<input type="range" id="rhc-price-max" min="0" max="10000" step="500" value="10000">' +
-        '<span class="value" id="rhc-price-max-val">$10k+</span>' +
-      '</div></div>' +
-      '<div class="rhc-filter-field"><label>Beds</label><select id="rhc-filter-beds">' +
-        '<option value="0">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>' +
-      '<div class="rhc-filter-field"><label>Baths</label><select id="rhc-filter-baths">' +
-        '<option value="0">Any</option><option value="1">1+</option><option value="2">2+</option><option value="3">3+</option><option value="4">4+</option></select></div>' +
-      '<div class="rhc-filter-field"><label>Move-in date</label><input type="date" id="rhc-filter-movein"></div>' +
-      '<label class="rhc-filter-toggle"><input type="checkbox" id="rhc-filter-pets"> Pets OK</label>' +
-      '<button class="rhc-account-btn ghost" style="height:32px;padding:0 12px;font-size:12px;margin-left:auto" id="rhc-filter-clear">Clear</button>';
-    listingsEl.parentElement.insertBefore(bar, listingsEl);
-
-    document.getElementById('rhc-price-min').addEventListener('input', function(e) {
-      var v = parseInt(e.target.value);
-      var maxSlider = document.getElementById('rhc-price-max');
-      if (maxSlider && parseInt(maxSlider.value) < v) { maxSlider.value = v; document.getElementById('rhc-price-max-val').textContent = v === 10000 ? '$10k+' : '$' + v; }
-      RHC.activeFilters.priceMin = v;
-      document.getElementById('rhc-price-min-val').textContent = '$' + v.toLocaleString();
-      applyFilters();
-    });
-    document.getElementById('rhc-price-max').addEventListener('input', function(e) {
-      var v = parseInt(e.target.value);
-      var minSlider = document.getElementById('rhc-price-min');
-      if (minSlider && parseInt(minSlider.value) > v) { minSlider.value = v; document.getElementById('rhc-price-min-val').textContent = '$' + v.toLocaleString(); }
-      RHC.activeFilters.priceMax = v;
-      document.getElementById('rhc-price-max-val').textContent = v === 10000 ? '$10k+' : '$' + v.toLocaleString();
-      applyFilters();
-    });
-    document.getElementById('rhc-filter-beds').addEventListener('change', function(e) { RHC.activeFilters.beds = parseInt(e.target.value); applyFilters(); });
-    document.getElementById('rhc-filter-baths').addEventListener('change', function(e) { RHC.activeFilters.baths = parseInt(e.target.value); applyFilters(); });
-    document.getElementById('rhc-filter-pets').addEventListener('change', function(e) { RHC.activeFilters.pets = e.target.checked; applyFilters(); });
-    document.getElementById('rhc-filter-movein').addEventListener('change', function(e) { RHC.activeFilters.moveIn = e.target.value; applyFilters(); });
-    document.getElementById('rhc-filter-clear').addEventListener('click', function(e) { e.preventDefault(); RHC.clearFilters(); });
-    return true;
-  }
-
-  function applyFilters() {
-    var cards = document.querySelectorAll('[data-rhc-listing-id]');
-    var visibleCount = 0;
-    cards.forEach(function(card) {
-      var data = extractListingData(card);
-      var visible = true;
-      if (data.price > 0 && (data.price < RHC.activeFilters.priceMin || data.price > RHC.activeFilters.priceMax)) visible = false;
-      if (data.beds > 0 && data.beds < RHC.activeFilters.beds) visible = false;
-      if (data.baths > 0 && data.baths < RHC.activeFilters.baths) visible = false;
-      if (RHC.activeFilters.pets && data.pets === 'No Pets') visible = false;
-      card.style.display = visible ? '' : 'none';
-      if (visible) visibleCount++;
-    });
-    var noResults = document.getElementById('rhc-filter-no-results');
-    if (visibleCount === 0) {
-      if (!noResults) {
-        noResults = document.createElement('div');
-        noResults.id = 'rhc-filter-no-results';
-        noResults.style.cssText = 'padding:40px;text-align:center;color:#64748B;font-family:Inter,sans-serif';
-        noResults.innerHTML = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" style="opacity:.3;margin-bottom:12px"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><h3 style="color:#1A1A18;margin-bottom:4px">No homes match these filters</h3><p>Try widening your price range or removing some filters.</p>';
-        var listingsEl = document.getElementById('listings');
-        if (listingsEl) listingsEl.appendChild(noResults);
-      }
-      noResults.style.display = 'block';
-    } else if (noResults) {
-      noResults.style.display = 'none';
-    }
-  }
-
-  RHC.clearFilters = function() {
-    RHC.activeFilters = { priceMin: 0, priceMax: 10000, beds: 0, baths: 0, pets: false, moveIn: '' };
-    var minSlider = document.getElementById('rhc-price-min');
-    var maxSlider = document.getElementById('rhc-price-max');
-    var bedsSel = document.getElementById('rhc-filter-beds');
-    var bathsSel = document.getElementById('rhc-filter-baths');
-    var petsChk = document.getElementById('rhc-filter-pets');
-    var moveinInp = document.getElementById('rhc-filter-movein');
-    if (minSlider) { minSlider.value = 0; document.getElementById('rhc-price-min-val').textContent = '$0'; }
-    if (maxSlider) { maxSlider.value = 10000; document.getElementById('rhc-price-max-val').textContent = '$10k+'; }
-    if (bedsSel) bedsSel.value = '0';
-    if (bathsSel) bathsSel.value = '0';
-    if (petsChk) petsChk.checked = false;
-    if (moveinInp) moveinInp.value = '';
-    applyFilters();
-    toast('Filters cleared.');
-  };
-
-  // ============ Saved homes page ============
-  function showSavedHomesPage() {
-    var existing = document.getElementById('rhc-saved-overlay');
-    if (existing) existing.remove();
-    var overlay = document.createElement('div');
-    overlay.id = 'rhc-saved-overlay';
-    overlay.className = 'rhc-saved-overlay';
-    overlay.innerHTML = '<div style="max-width:1200px;margin:0 auto;padding:24px 16px">' +
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">' +
-        '<button id="rhc-saved-close" style="background:none;border:none;cursor:pointer;font-size:22px;color:#1A1A18;display:flex;align-items:center">' + SVG.arrowLeft + '</button>' +
-        '<h1 style="font-family:Cormorant Garamond,serif;font-size:32px;color:#1A1A18;font-weight:600">Saved Homes</h1>' +
-        '<span id="rhc-saved-count" style="font-size:14px;color:#64748B;margin-left:auto"></span>' +
-      '</div>' +
-      '<div class="rhc-saved-grid" id="rhc-saved-grid"></div>' +
-      '<div id="rhc-saved-empty" style="display:none;text-align:center;padding:60px 20px;color:#64748B">' +
-        '<svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3;margin-bottom:16px"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' +
-        '<h3 style="color:#1A1A18;font-size:18px;margin-bottom:6px">No saved homes yet</h3>' +
-        '<p>Tap the heart icon on any listing to save it here.</p>' +
-      '</div>' +
-    '</div>';
-    document.body.appendChild(overlay);
-    overlay.querySelector('#rhc-saved-close').addEventListener('click', function() { overlay.remove(); });
-    renderSavedHomesGrid();
-  }
-  window.showSavedHomesPage = showSavedHomesPage;
-
-  function renderSavedHomesGrid() {
-    var grid = document.getElementById('rhc-saved-grid');
-    var empty = document.getElementById('rhc-saved-empty');
-    var count = document.getElementById('rhc-saved-count');
-    if (!grid) return;
-    if (RHC.savedHomes.length === 0) {
-      grid.style.display = 'none'; empty.style.display = 'block'; count.textContent = '';
-      return;
-    }
-    grid.style.display = 'grid'; empty.style.display = 'none';
-    count.textContent = RHC.savedHomes.length + ' saved';
-    grid.innerHTML = RHC.savedHomes.map(function(id) {
-      var card;
-      try { card = document.querySelector('[data-rhc-listing-id="' + CSS.escape(id) + '"]'); } catch(e) { card = null; }
-      if (card) {
-        var d = extractListingData(card);
-        return '<div class="rhc-saved-card" onclick="RHC.openDetailById(\'' + escapeHtml(id) + '\')">' +
-          '<img src="' + escapeHtml(d.img) + '" loading="lazy">' +
-          '<div class="body"><div class="price">$' + (d.price || 0).toLocaleString() + '/mo</div>' +
-          '<div class="addr">' + escapeHtml(d.address) + '</div>' +
-          '<div class="specs">' + d.beds + ' bd - ' + d.baths + ' ba - ' + (d.sqft || 0).toLocaleString() + ' sqft</div>' +
-          '<button class="rhc-account-btn ghost" style="font-size:11px;padding:4px 10px;height:auto;margin-top:6px" onclick="event.stopPropagation();RHC.removeSaved(\'' + escapeHtml(id) + '\')">Remove</button>' +
-          '</div></div>';
-      }
-      return '<div class="rhc-saved-card"><div class="body"><div class="addr">' + escapeHtml(id) + '</div>' +
-        '<div class="specs" style="margin:8px 0">Saved home (not in current view)</div>' +
-        '<button class="rhc-account-btn ghost" style="font-size:11px;padding:4px 10px;height:auto" onclick="RHC.removeSaved(\'' + escapeHtml(id) + '\')">Remove</button>' +
-        '</div></div>';
-    }).join('');
-  }
-
-  RHC.removeSaved = async function(id) {
-    RHC.savedHomes = RHC.savedHomes.filter(function(x) { return x !== id; });
-    localStorage.setItem('rhc_saved_homes', JSON.stringify(RHC.savedHomes));
-    if (RHC.renter && RHC.db) {
-      try { await RHC.db.collection('renters').doc(RHC.renter.uid).collection('saved').doc(id).delete(); }
-      catch(e) { console.warn('RHC: unsave remote failed', e); }
-    }
-    renderSavedHomesGrid();
-    refreshHeartIcons();
-  };
-
   // ============ Chat widget (pulse, SVG avatars, send button fix) ============
   var widget = null, chatPanel = null, chatMessages = null, chatInput = null, chatOpen = false;
+
+  function scrollToId(id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }
+  function scrollToFooter() {
+    var f = document.getElementById('rhc-footer-contact-host') ||
+            document.querySelector('footer');
+    if (f) f.scrollIntoView({ behavior: 'smooth' });
+  }
+  function openChatWidget() {
+    var fab = document.querySelector('.rhc-chat-fab');
+    if (fab) fab.click();
+  }
+  function prefillChat(msg) {
+    if (!chatInput) return;
+    chatInput.value = msg;
+    chatInput.style.height = '40px';
+    chatInput.style.height = Math.min(120, chatInput.scrollHeight) + 'px';
+    chatInput.focus();
+  }
+  RHC.openChatWithMessage = function(msg) {
+    if (!chatOpen) openChatWidget();
+    setTimeout(function() { prefillChat(msg); }, 350);
+  };
+  RHC.openChat = openChatWidget;
+  RHC.scrollToId = scrollToId;
+  RHC.scrollToFooter = scrollToFooter;
 
   function showChatWidget() {
     if (widget) return;
     injectBaseStyles();
-    // Wrap holds the FAB + label so they sit side-by-side
     var wrap = document.createElement('div');
     wrap.className = 'rhc-chat-fab-wrap';
-    // Label (pulses in subtly, invites click)
     var label = document.createElement('div');
     label.className = 'rhc-chat-fab-label';
     label.textContent = 'Chat with us';
     label.addEventListener('click', function() { toggleChat(); });
-    // FAB (pulse rings + chat icon)
     var fab = document.createElement('button');
     fab.className = 'rhc-chat-fab';
     fab.setAttribute('aria-label', 'Open chat');
@@ -1349,13 +2156,11 @@ Error generating stack: `+o.message+`
     wrap.appendChild(fab);
     document.body.appendChild(wrap);
 
-    // Chat window
     var win = document.createElement('div');
     win.className = 'rhc-chat-window';
     win.style.display = 'none';
-    // CRITICAL: header avatar uses <img src=window.RHC_LOGO_PUBLIC> (NOT Font Awesome)
     win.innerHTML = '<div class="rhc-chat-header">' +
-      '<div class="avatar"><img src="' + RHC_LOGO_PUBLIC + '" alt="RHC"></div>' +
+      '<div class="avatar">' + imgTag(RHC_LOGO_PUBLIC, 'RHC', '') + '</div>' +
       '<div><div class="title">Rental Home Connect</div><div class="sub"><span class="online-dot"></span> Online now</div></div>' +
       '<button class="close" aria-label="Close">' + SVG.close + '</button></div>' +
       '<div class="rhc-chat-messages" id="rhc-messages"></div>' +
@@ -1378,16 +2183,11 @@ Error generating stack: `+o.message+`
       if (chatOpen) {
         var b = win.querySelector('#rhc-unread');
         if (b) { b.classList.add('hidden'); b.textContent = '0'; }
-        // Hide the label after first open (less visual noise)
         if (label) label.style.display = 'none';
         setTimeout(function() { chatInput.focus(); chatMessages.scrollTop = chatMessages.scrollHeight; }, 60);
       }
     }
-
     win.querySelector('.close').addEventListener('click', function() { chatOpen = false; win.style.display = 'none'; });
-    // CRITICAL FIX: send button handler MUST wrap sendVisitorMessage so the event
-    // is NOT passed as the text argument. Calling `sendVisitorMessage` directly
-    // would pass the click event as `text` and log "[object MouseEvent]" to Firestore.
     win.querySelector('#rhc-send').addEventListener('click', function(e) { e.preventDefault(); sendVisitorMessage(); });
     chatInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendVisitorMessage(); }
@@ -1497,7 +2297,7 @@ Error generating stack: `+o.message+`
         if (ind) ind.classList.toggle('show', !!isTyping);
         if (!chatOpen && data.lastSenderType === 'admin') {
           var b = widget && widget.win ? widget.win.querySelector('#rhc-unread') : null;
-          if (b) { var n = parseInt(b.textContent || '0') + 1; b.textContent = n; b.classList.remove('hidden'); }
+          if (b) { var n = parseInt(b.textContent || '0', 10) + 1; b.textContent = n; b.classList.remove('hidden'); }
         }
       }, function(err) { console.warn('RHC: meta snapshot failed', err); });
     } catch(e) { console.error('RHC: listenToChat setup failed', e); }
@@ -1512,11 +2312,13 @@ Error generating stack: `+o.message+`
     if (m.text) html += escapeHtml(m.text);
     if (m.attachmentUrl) {
       var full = m.attachmentUrl;
-      // FIX: use corrected cloud name in URL optimization
       if (full.indexOf('res.cloudinary.com/' + RHC.cloudName) >= 0) {
         full = full.replace('/upload/', '/upload/q_auto,f_auto/');
       }
-      html += '<br><img src="' + escapeHtml(full) + '" onclick="window.open(\'' + escapeHtml(full) + '\',\'_blank\')" style="cursor:zoom-in">';
+      // Build a clickable thumbnail that opens the full image in a new tab
+      html += '<br><a href="' + escapeHtml(full) + '" target="_blank" rel="noopener" style="display:block">' +
+              imgTag(full, 'Attachment', 'max-width:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;display:block') +
+              '</a>';
     }
     var ts = m.timestamp ? new Date(m.timestamp.toMillis ? m.timestamp.toMillis() : Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
     html += '<div class="ts">' + ts + '</div>';
@@ -1525,7 +2327,6 @@ Error generating stack: `+o.message+`
   }
 
   async function sendVisitorMessage(text, attachmentUrl) {
-    // Defensive: never allow the click event to be used as the text body
     if (typeof text !== 'string') text = '';
     if (!text && !attachmentUrl) {
       if (!chatInput) return;
@@ -1538,11 +2339,6 @@ Error generating stack: `+o.message+`
       await startNewChat();
       if (!RHC.currentChatId) return;
     }
-    // FIX #3: Split into separate try/catch blocks.
-    // The message.add() is the critical part — if it succeeds, the message IS sent.
-    // The chatRef.set() updates the chat metadata (lastMessage, updatedAt) — if THAT
-    // fails (e.g. permission-denied on the chat doc), we should NOT show an error
-    // to the visitor, because the message itself already went through.
     var messageSent = false;
     try {
       var chatRef = RHC.db.collection('chats').doc(RHC.currentChatId);
@@ -1561,8 +2357,6 @@ Error generating stack: `+o.message+`
       chatMessages.scrollTop = chatMessages.scrollHeight;
       return;
     }
-    // Message was sent successfully — now try to update chat metadata.
-    // If this fails, log it but DON'T show an error to the visitor.
     try {
       var chatRef2 = RHC.db.collection('chats').doc(RHC.currentChatId);
       await chatRef2.set({
@@ -1629,217 +2423,6 @@ Error generating stack: `+o.message+`
     });
   }
 
-  // ============ Showcase carousels (NYC + LA only, from Firestore) ============
-  var SHOWCASE_CITIES = [
-    {city:"New York",state:"NY"},
-    {city:"Los Angeles",state:"CA"}
-  ];
-  var carouselHost = null, otherHousesHost = null, mapHost = null, rhcMap = null;
-  var rhcListings = [];
-  var rhcMapMarkers = [];
-  // City → lat/lng lookup for the map
-  var CITY_COORDS = {
-    "New York":[40.7128,-74.0060],"Los Angeles":[34.0522,-118.2437],"Chicago":[41.8781,-87.6298],
-    "Houston":[29.7604,-95.3698],"Phoenix":[33.4484,-112.0740],"Philadelphia":[39.9526,-75.1652],
-    "San Antonio":[29.4241,-98.4936],"San Diego":[32.7157,-117.1611],"Dallas":[32.7767,-96.7970],
-    "Austin":[30.2672,-97.7431],"Jacksonville":[30.3322,-81.6557],"Fort Worth":[32.7555,-97.3308],
-    "Columbus":[39.9612,-82.9988],"Charlotte":[35.2271,-80.8431],"San Francisco":[37.7749,-122.4194],
-    "Indianapolis":[39.7684,-86.1581],"Seattle":[47.6062,-122.3321],"Denver":[39.7392,-104.9903],
-    "Washington":[38.9072,-77.0369],"Boston":[42.3601,-71.0589],"El Paso":[31.7619,-106.4850],
-    "Nashville":[36.1627,-86.7816],"Detroit":[42.3314,-83.0458],"Oklahoma City":[35.4676,-97.5164],
-    "Portland":[45.5152,-122.6784],"Las Vegas":[36.1699,-115.1398],"Memphis":[35.1495,-90.0490],
-    "Louisville":[38.2527,-85.7585],"Baltimore":[39.2904,-76.6122],"Milwaukee":[43.0389,-87.9065],
-    "Albuquerque":[35.0844,-106.6504],"Tucson":[32.2226,-110.9747],"Fresno":[36.7378,-119.7871],
-    "Sacramento":[38.5816,-121.4944]
-  };
-
-  function injectContentHosts() {
-    // Inject 3 sections above #listings: map, showcase carousels, other houses
-    var listingsEl = document.getElementById('listings');
-    if (!listingsEl) return false;
-    
-    // Hide the React bundle's listing grid (overlay replaces it)
-    listingsEl.style.display = 'none';
-
-    // 1. Map section
-    if (!mapHost || !document.body.contains(mapHost)) {
-      mapHost = document.createElement('div');
-      mapHost.id = 'rhc-map-section';
-      mapHost.style.cssText = 'max-width:1600px;margin:24px auto 0;padding:0 16px;font-family:Inter,sans-serif;';
-      mapHost.innerHTML = '<h2 style="font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px">Explore on the map</h2>' +
-        '<p style="font-size:14px;color:#64748B;margin-bottom:16px">Tap a marker to see available rentals in that area.</p>' +
-        '<div id="rhc-leaflet-map" style="height:400px;border-radius:16px;overflow:hidden;border:1px solid #E8E2D9;margin-bottom:32px"></div>';
-      listingsEl.parentElement.insertBefore(mapHost, listingsEl);
-    }
-
-    // 2. Showcase carousels
-    if (!carouselHost || !document.body.contains(carouselHost)) {
-      carouselHost = document.createElement('div');
-      carouselHost.id = 'rhc-city-carousels';
-      carouselHost.style.cssText = 'max-width:1600px;margin:0 auto;padding:0 16px;font-family:Inter,sans-serif;';
-      listingsEl.parentElement.insertBefore(carouselHost, listingsEl);
-    }
-
-    // 3. Other houses grid
-    if (!otherHousesHost || !document.body.contains(otherHousesHost)) {
-      otherHousesHost = document.createElement('div');
-      otherHousesHost.id = 'rhc-other-houses';
-      otherHousesHost.style.cssText = 'max-width:1600px;margin:32px auto;padding:0 16px;font-family:Inter,sans-serif;';
-      listingsEl.parentElement.insertBefore(otherHousesHost, listingsEl);
-    }
-
-    return true;
-  }
-
-  function renderCarousels() {
-    if (!carouselHost) return;
-    // Only show showcase listings in NYC + LA, 3 each
-    var showcaseListings = rhcListings.filter(function(l) { return l.placement === 'showcase'; });
-    var html = '<h2 style="font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px">Featured homes</h2>';
-    html += '<p style="font-size:14px;color:#64748B;margin-bottom:24px">Scroll horizontally to browse our showcase rentals.</p>';
-    SHOWCASE_CITIES.forEach(function(c) {
-      var cityListings = showcaseListings.filter(function(l) { return (l.city||'') === c.city; }).slice(0, 3);
-      html += '<div style="margin-bottom:36px">';
-      html += '<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:12px">';
-      html += '<h3 style="font-family:Cormorant Garamond,serif;font-size:24px;color:#1A1A18;font-weight:600">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</h3>';
-      html += '<span style="font-size:13px;color:#64748B;flex-shrink:0">' + cityListings.length + ' homes &bull; scroll &rarr;</span>';
-      html += '</div>';
-      if (cityListings.length === 0) {
-        html += '<div style="padding:20px;background:#FAFAF8;border:1px dashed #E8E2D9;border-radius:14px;color:#64748B;font-size:13px;text-align:center">No showcase homes in ' + escapeHtml(c.city) + ' yet.</div>';
-      } else {
-        html += '<div style="display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scroll-snap-type:x mandatory">';
-        cityListings.forEach(function(h) {
-          var img = (h.images && h.images[0]) || 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=70';
-          html += '<div class="rhc-listing-card" data-rhc-listing-id="' + escapeHtml(h.id||'') + '" style="flex:0 0 280px;background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;scroll-snap-align:start" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.boxShadow=\'0 12px 32px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
-          html += '<div style="height:180px;background:#F5F1EB;overflow:hidden;position:relative">';
-          html += '<img src="' + escapeHtml(img) + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">';
-          html += '<div style="position:absolute;top:10px;left:10px;background:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700;letter-spacing:.5px">' + escapeHtml((h.type||'House').toUpperCase()) + '</div>';
-          html += '<div style="position:absolute;top:10px;right:10px;background:#1A1A18;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">$' + ((h.price||0).toLocaleString()) + '/mo</div>';
-          html += '</div><div style="padding:14px">';
-          html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px">' + escapeHtml(h.address||'Address') + '</div>';
-          html += '<div style="font-size:12px;color:#64748B;margin-bottom:8px">' + escapeHtml(h.city||'') + ', ' + escapeHtml(h.state||'') + '</div>';
-          html += '<div style="display:flex;gap:10px;font-size:12px;color:#1A1A18"><span><strong>' + (h.beds||0) + '</strong> bd</span><span><strong>' + (h.baths||0) + '</strong> ba</span><span><strong>' + ((h.sqft||0).toLocaleString()) + '</strong> sqft</span></div>';
-          html += '</div></div>';
-        });
-        html += '</div>';
-      }
-      html += '</div>';
-    });
-    carouselHost.innerHTML = html;
-  }
-
-  function renderOtherHouses() {
-    if (!otherHousesHost) return;
-    var otherListings = rhcListings.filter(function(l) { return l.placement !== 'showcase'; });
-    if (otherListings.length === 0) {
-      otherHousesHost.innerHTML = '';
-      return;
-    }
-    var html = '<h2 style="font-family:Cormorant Garamond,serif;font-size:28px;color:#1A1A18;font-weight:600;margin-bottom:4px;letter-spacing:-0.5px">More homes</h2>';
-    html += '<p style="font-size:14px;color:#64748B;margin-bottom:24px">Other available rentals across the country.</p>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">';
-    otherListings.forEach(function(h) {
-      var img = (h.images && h.images[0]) || 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=600&q=70';
-      html += '<div class="rhc-listing-card" data-rhc-listing-id="' + escapeHtml(h.id||'') + '" style="background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.boxShadow=\'0 12px 32px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
-      html += '<div style="height:180px;background:#F5F1EB;overflow:hidden;position:relative">';
-      html += '<img src="' + escapeHtml(img) + '" style="width:100%;height:100%;object-fit:cover" loading="lazy">';
-      html += '<div style="position:absolute;top:10px;left:10px;background:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">' + escapeHtml((h.type||'House').toUpperCase()) + '</div>';
-      html += '<div style="position:absolute;top:10px;right:10px;background:#1A1A18;color:#fff;padding:4px 10px;border-radius:8px;font-size:11px;font-weight:700">$' + ((h.price||0).toLocaleString()) + '/mo</div>';
-      html += '</div><div style="padding:14px">';
-      html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px">' + escapeHtml(h.address||'Address') + '</div>';
-      html += '<div style="font-size:12px;color:#64748B;margin-bottom:8px">' + escapeHtml(h.city||'') + ', ' + escapeHtml(h.state||'') + '</div>';
-      html += '<div style="display:flex;gap:10px;font-size:12px;color:#1A1A18"><span><strong>' + (h.beds||0) + '</strong> bd</span><span><strong>' + (h.baths||0) + '</strong> ba</span><span><strong>' + ((h.sqft||0).toLocaleString()) + '</strong> sqft</span></div>';
-      html += '</div></div>';
-    });
-    html += '</div>';
-    otherHousesHost.innerHTML = html;
-  }
-
-  // ============ Leaflet map ============
-  function injectLeafletStyles() {
-    if (document.getElementById('rhc-leaflet-css')) return;
-    var link = document.createElement('link');
-    link.id = 'rhc-leaflet-css';
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-  }
-
-  function initMap() {
-    if (rhcMap) return;
-    var mapEl = document.getElementById('rhc-leaflet-map');
-    if (!mapEl) return;
-    injectLeafletStyles();
-    // Load Leaflet JS if not already loaded
-    if (typeof L === 'undefined') {
-      loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js').then(function() {
-        createMap();
-      });
-    } else {
-      createMap();
-    }
-  }
-
-  function createMap() {
-    var mapEl = document.getElementById('rhc-leaflet-map');
-    if (!mapEl || rhcMap) return;
-    rhcMap = L.map(mapEl, { scrollWheelZoom: false }).setView([39.5, -98.35], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors', maxZoom: 18
-    }).addTo(rhcMap);
-    updateMap();
-  }
-
-  function updateMap() {
-    if (!rhcMap || typeof L === 'undefined') return;
-    // Clear old markers
-    rhcMapMarkers.forEach(function(m) { rhcMap.removeLayer(m); });
-    rhcMapMarkers = [];
-    // Group listings by city where showOnMap === true
-    var cityMap = {};
-    rhcListings.forEach(function(l) {
-      if (!l.showOnMap) return;
-      var key = (l.city||'') + ', ' + (l.state||'');
-      if (!cityMap[key]) cityMap[key] = { city: l.city, state: l.state, listings: [] };
-      cityMap[key].listings.push(l);
-    });
-    // Place markers
-    Object.keys(cityMap).forEach(function(key) {
-      var c = cityMap[key];
-      var coords = CITY_COORDS[c.city];
-      if (!coords) return;
-      var marker = L.marker([coords[0], coords[1]]).addTo(rhcMap);
-      var popupHtml = '<div style="font-family:Inter,sans-serif;max-width:250px"><strong style="font-size:15px">' + escapeHtml(c.city) + ', ' + escapeHtml(c.state) + '</strong><br><span style="font-size:12px;color:#64748B">' + c.listings.length + ' rental' + (c.listings.length>1?'s':'') + ' available</span>';
-      c.listings.slice(0, 5).forEach(function(h) {
-        popupHtml += '<div style="margin-top:8px;padding-top:8px;border-top:1px solid #E8E2D9"><div style="font-weight:600;font-size:13px;color:#1A1A18">' + escapeHtml(h.address||'') + '</div><div style="font-size:12px;color:#0A66FF;font-weight:700">$' + ((h.price||0).toLocaleString()) + '/mo</div><div style="font-size:11px;color:#64748B">' + (h.beds||0) + ' bd &bull; ' + (h.baths||0) + ' ba</div></div>';
-      });
-      if (c.listings.length > 5) popupHtml += '<div style="margin-top:8px;font-size:12px;color:#64748B">+' + (c.listings.length-5) + ' more</div>';
-      popupHtml += '</div>';
-      marker.bindPopup(popupHtml);
-      rhcMapMarkers.push(marker);
-    });
-  }
-
-  RHC.filterCity = function(cityName) {
-    try {
-      var selects = document.querySelectorAll('select');
-      for (var i = 0; i < selects.length; i++) {
-        var opts = selects[i].options;
-        for (var j = 0; j < opts.length; j++) {
-          if ((opts[j].text || '').indexOf(cityName) >= 0 || (opts[j].value || '').indexOf(cityName) >= 0) {
-            selects[i].value = opts[j].value;
-            selects[i].dispatchEvent(new Event('change', { bubbles: true }));
-            var l = document.getElementById('listings');
-            if (l) l.scrollIntoView({ behavior: 'smooth' });
-            return;
-          }
-        }
-      }
-    } catch(e) { console.warn('RHC: filterCity failed', e); }
-    var l2 = document.getElementById('listings');
-    if (l2) l2.scrollIntoView({ behavior: 'smooth' });
-  };
-
   // ============ Testimonials (3 reviews) ============
   function injectTestimonials() {
     if (document.getElementById('rhc-testimonials')) return true;
@@ -1877,7 +2460,7 @@ Error generating stack: `+o.message+`
       '<h2>What our renters say</h2>' +
       '<div class="sub">Real stories from renters who found their home with us.</div>' +
       '<div class="rhc-testimonials-grid">' + cardsHtml + '</div>';
-    // Place AFTER the city carousels (below listings). We insert after #listings.
+    // FIX C8: testimonials come AFTER the map → insert at end of anchor (which is below listings)
     anchor.appendChild(section);
     return true;
   }
@@ -1891,7 +2474,6 @@ Error generating stack: `+o.message+`
     var block = document.createElement('section');
     block.id = 'rhc-reco-block';
     block.className = 'rhc-reco';
-    // Three stacked mini property cards on the right (decorative)
     var miniCards = [
       { img: 'https://images.unsplash.com/photo-1568605114967-8130f3a36994?w=400&q=70&auto=format&fit=crop', price: '$2,400/mo', addr: 'Modern 2BR in Austin' },
       { img: 'https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=400&q=70&auto=format&fit=crop', price: '$3,100/mo', addr: 'Sunny Condo in Miami' },
@@ -1904,7 +2486,7 @@ Error generating stack: `+o.message+`
         'top:130px;right:0;transform:rotate(4deg);z-index:1;'
       ];
       return '<div class="rhc-reco-mini" style="' + offsets[i] + '">' +
-        '<img src="' + escapeHtml(m.img) + '" loading="lazy">' +
+        imgTag(m.img, m.addr, 'width:100%;height:80px;object-fit:cover;border-radius:8px') +
         '<div class="price">' + escapeHtml(m.price) + '</div>' +
         '<div class="addr">' + escapeHtml(m.addr) + '</div>' +
       '</div>';
@@ -1944,7 +2526,7 @@ Error generating stack: `+o.message+`
     document.body.classList.add('rhc-mobile-tabbar-active');
     document.getElementById('rhc-tab-search').addEventListener('click', function(e) {
       e.preventDefault();
-      var l = document.getElementById('listings');
+      var l = document.getElementById('rhc-other-houses') || document.getElementById('listings');
       if (l) l.scrollIntoView({ behavior: 'smooth' });
     });
     document.getElementById('rhc-tab-favorites').addEventListener('click', function(e) {
@@ -1964,7 +2546,7 @@ Error generating stack: `+o.message+`
     if (!host) return;
     var b = RHC.branding || {};
     var html = '<div class="rhc-footer-contact-row">';
-    html += '<img src="' + RHC_LOGO_ADMIN + '" alt="Rental Home Connect" style="height:80px;width:auto;object-fit:contain">';
+    html += imgTag(RHC_LOGO_ADMIN, 'Rental Home Connect', 'height:80px;width:auto;object-fit:contain');
     html += '<div class="rhc-footer-contact-info">';
     if (b.email) html += '<div class="row">' + SVG.mail + ' <a href="mailto:' + escapeHtml(b.email) + '">' + escapeHtml(b.email) + '</a></div>';
     if (b.phone) html += '<div class="row">' + SVG.phone + ' ' + escapeHtml(b.phone) + '</div>';
@@ -1975,7 +2557,7 @@ Error generating stack: `+o.message+`
     var agents = b.tiktokAgents || [];
     if (agents.length) {
       var agentUrls = b.tiktokAgentUrls || {};
-      html += '<div class="row" style="flex-wrap:wrap"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg> <span>Agents:</span> ';
+      html += '<div class="row" style="flex-wrap:wrap">' + SVG.user + ' <span>Agents:</span> ';
       agents.forEach(function(a, i) {
         var url = agentUrls[a] || ('https://www.tiktok.com/@' + a);
         html += '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener">@' + escapeHtml(a) + '</a>';
@@ -1989,20 +2571,17 @@ Error generating stack: `+o.message+`
 
   function injectFooterContact() {
     if (document.getElementById('rhc-footer-contact-host')) { updateFooterContact(); return true; }
-    // FIX #8: Insert contact us BELOW the reviews/testimonials section, above the footer.
-    // Find the testimonials section first; if not found yet, fall back to footer.
+    // FIX C8: insert contact us BELOW testimonials, above footer
     var insertBefore = null;
     var testimonials = document.getElementById('rhc-testimonials');
     if (testimonials) {
-      // Insert after testimonials — find the next sibling or footer
       insertBefore = testimonials.nextElementSibling;
       // Skip other RHC-injected sections to find the right spot
-      while (insertBefore && (insertBefore.id === 'rhc-recommendations' || insertBefore.id === 'rhc-mobile-tabbar')) {
+      while (insertBefore && (insertBefore.id === 'rhc-reco-block' || insertBefore.id === 'rhc-mobile-tabbar')) {
         insertBefore = insertBefore.nextElementSibling;
       }
     }
     if (!insertBefore) {
-      // Fall back: find footer
       var footer = document.querySelector('footer') || (function() {
         var divs = document.querySelectorAll('div');
         for (var i = divs.length - 1; i >= 0; i--) {
@@ -2033,7 +2612,9 @@ Error generating stack: `+o.message+`
     injectRecommendationsBlock();
     injectMobileTabBar();
     injectFooterContact();
-    // MutationObserver for heart icons on cards (cards only — NOT logo/nav)
+    // FIX E13: wire up Terms/Privacy links on every page load
+    setupTermsAndPrivacyLinks();
+    // MutationObserver for heart icons on cards (cards only)
     setupHeartObserver();
 
     // Initialize Firebase (async, sets up Firestore listeners)
@@ -2045,13 +2626,24 @@ Error generating stack: `+o.message+`
       tries++;
       if (tries > 90) { clearInterval(interval); return; }
       injectAccountButton();
+      setupApplicationButton();
+      setupSearchHandler();
+      setupTermsAndPrivacyLinks();
       if (injectTestimonials()) { /* keep going so positioning can adjust if layout shifts */ }
       injectRecommendationsBlock();
       injectFooterContact();
-      // Inject map + carousels + other houses (replaces old injectCarouselHost)
+      // Inject content hosts in correct order: carousels → other houses → map
       if (injectContentHosts()) {
-        renderCarousels();
-        renderOtherHouses();
+        // Inject the filter bar right above the other houses host
+        injectFilterBar();
+        // Render skeletons immediately if data not yet loaded
+        if (!RHC.dataLoaded && rhcListings.length === 0) {
+          renderCarouselsSkeleton();
+          renderOtherHousesSkeleton();
+        } else {
+          renderCarousels();
+          renderOtherHouses();
+        }
         initMap();
       }
     }, 800);
