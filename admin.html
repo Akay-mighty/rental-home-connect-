@@ -347,6 +347,28 @@
   .empty-state h3 { color: var(--dark); margin-bottom: 4px; font-size: 18px; }
 
   /* Tables */
+  /* Mobile-friendly property cards */
+  .rhc-mobile-cards { display: flex; flex-direction: column; gap: 12px; }
+  .rhc-property-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; transition: box-shadow .15s; }
+  .rhc-property-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+  .rhc-property-card-top { display: flex; align-items: flex-start; gap: 12px; }
+  .rhc-property-card-top .listing-checkbox { margin-top: 4px; flex-shrink: 0; }
+  .rhc-property-thumb { width: 80px; height: 60px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .rhc-property-thumb-placeholder { width: 80px; height: 60px; background: #F5F1EB; border-radius: 8px; flex-shrink: 0; }
+  .rhc-property-info { flex: 1; min-width: 0; }
+  .rhc-property-address { font-weight: 700; font-size: 14px; color: var(--dark); margin-bottom: 2px; }
+  .rhc-property-city { font-size: 12px; color: var(--gray); margin-bottom: 4px; }
+  .rhc-property-stats { font-size: 12px; color: var(--dark); }
+  .rhc-property-type { font-size: 11px; color: var(--gray); margin-top: 2px; }
+  .rhc-property-actions { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid #F1F5F9; }
+  .rhc-property-actions .btn { flex: 1; justify-content: center; }
+  /* Desktop: show as table-like rows */
+  @media (min-width: 769px) {
+    .rhc-property-card { flex-direction: row; align-items: center; }
+    .rhc-property-card-top { flex: 1; }
+    .rhc-property-actions { border-top: none; padding-top: 0; border-left: 1px solid #F1F5F9; padding-left: 12px; }
+    .rhc-property-actions .btn { flex: none; }
+  }
   .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   @media (max-width: 768px) { .data-table { min-width: 700px; } }
@@ -1302,33 +1324,33 @@ function renderListings() {
         <div class="empty-state" style="padding:40px">
           <i class="fa-regular fa-building"></i>
           <h3>No properties yet</h3>
-          <p>No properties yet. Click "Add property" to create your first listing.</p>
+          <p>Click "Add property" to create your first listing.</p>
         </div>
       ` : `
-        <table class="data-table">
-          <thead>
-            <tr><th><input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this.checked)"></th><th></th><th>Address</th><th>City</th><th>Price</th><th>Beds</th><th>Baths</th><th>Sqft</th><th>Type</th><th></th></tr>
-          </thead>
-          <tbody>
-            ${State.listings.map(l => `
-              <tr data-listing-id="${l.id}">
-                <td><input type="checkbox" class="listing-checkbox" value="${l.id}" onchange="updateSelectedCount()"></td>
-                <td>${l.images && l.images[0] ? `<img class="thumb" src="${escapeHtml(cloudinaryThumb(l.images[0], {w:120,h:80,c:'fill',q:'auto'}) || l.images[0])}">` : ''}</td>
-                <td><strong>${escapeHtml(l.address || '-')}</strong></td>
-                <td>${escapeHtml(l.city || '-')}, ${escapeHtml(l.state || '')}</td>
-                <td>$${(l.price || 0).toLocaleString()}</td>
-                <td>${l.beds || '-'}</td>
-                <td>${l.baths || '-'}</td>
-                <td>${(l.sqft || 0).toLocaleString()}</td>
-                <td>${escapeHtml(l.type || '-')}</td>
-                <td>
-                  <button class="btn btn-ghost" style="padding:6px 10px;font-size:12px" onclick="openListingModal('${l.id}')"><i class="fa-solid fa-pen"></i></button>
-                  <button class="btn btn-danger" style="padding:6px 10px;font-size:12px" onclick="deleteListing('${l.id}')"><i class="fa-solid fa-trash"></i></button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+        <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="select-all-checkbox" onchange="toggleSelectAll(this.checked)" style="width:16px;height:16px">
+          <label for="select-all-checkbox" style="font-size:13px;color:var(--gray);cursor:pointer">Select all</label>
+        </div>
+        <div class="rhc-mobile-cards">
+          ${State.listings.map(l => `
+            <div class="rhc-property-card" data-listing-id="${l.id}">
+              <div class="rhc-property-card-top">
+                <input type="checkbox" class="listing-checkbox" value="${l.id}" onchange="updateSelectedCount()" style="margin-top:4px;flex-shrink:0">
+                ${l.images && l.images[0] ? '<img class="rhc-property-thumb" src="' + escapeHtml(cloudinaryThumb(l.images[0], {w:120,h:80,c:'fill',q:'auto'}) || l.images[0]) + '" onerror="this.src=\'data:image/svg+xml,%3Csvg xmlns=\'\'http://www.w3.org/2000/svg\'\' width=\'\'80\'\' height=\'\'60\'\'%3E%3Crect width=\'\'100%25\'\' height=\'\'100%25\'\' fill=\'\'%23F5F1EB\'\'/%3E%3C/svg%3E\'">' : '<div class="rhc-property-thumb-placeholder"></div>'}
+                <div class="rhc-property-info">
+                  <div class="rhc-property-address">${escapeHtml(l.address || '-')}</div>
+                  <div class="rhc-property-city">${escapeHtml(l.city || '-')}, ${escapeHtml(l.state || '')}</div>
+                  <div class="rhc-property-stats">$${(l.price || 0).toLocaleString()}/mo &bull; ${l.beds || 0}bd &bull; ${l.baths || 0}ba &bull; ${(l.sqft || 0).toLocaleString()}sqft</div>
+                  <div class="rhc-property-type">${escapeHtml(l.type || '-')}${l.placement === 'showcase' ? ' &starf; Showcase' : ''}${l.showOnMap ? ' &nbsp;&nbsp;On Map' : ''}</div>
+                </div>
+              </div>
+              <div class="rhc-property-actions">
+                <button class="btn btn-primary" style="padding:8px 16px;font-size:13px" onclick="openListingModal('${l.id}')"><i class="fa-solid fa-pen"></i> Edit</button>
+                <button class="btn btn-danger" style="padding:8px 16px;font-size:13px" onclick="deleteListing('${l.id}')"><i class="fa-solid fa-trash"></i> Delete</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
       `}
     </div>
   `;
