@@ -323,12 +323,12 @@ Error generating stack: `+o.message+`
       '.rhc-chat-header .close{margin-left:auto;background:rgba(255,255,255,.18);border:none;color:#fff;width:28px;height:28px;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;}',
       '.rhc-chat-header .close:hover{background:rgba(255,255,255,.3);}',
       '.rhc-chat-messages{flex:1;overflow-y:auto;padding:16px;background:#FAFAF8;display:flex;flex-direction:column;gap:8px;}',
-      '.rhc-msg{max-width:78%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word;}',
+      '.rhc-msg{max-width:78%;padding:9px 13px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word;overflow:hidden;box-sizing:border-box;}',
       '.rhc-msg.visitor{background:#0A66FF;color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}',
       '.rhc-msg.agent{background:#fff;color:#1A1A18;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid #E8E2D9;}',
       '.rhc-msg.error{background:#FEE2E2;color:#EF4444;align-self:center;font-size:12px;text-align:center;}',
       '.rhc-msg .ts{font-size:10px;opacity:.7;margin-top:3px;}',
-      '.rhc-msg img{max-width:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;display:block;}',
+      '.rhc-msg img{max-width:100%;width:auto;max-height:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;display:block;box-sizing:border-box;object-fit:contain;}',
       '.rhc-typing{align-self:flex-start;background:#fff;border:1px solid #E8E2D9;padding:9px 13px;border-radius:14px;color:#64748B;font-size:13px;display:none;}',
       '.rhc-typing.show{display:block;}',
       '.rhc-typing .dots span{display:inline-block;width:5px;height:5px;background:#64748B;border-radius:50%;margin:0 1px;animation:rhcDot 1.4s infinite;}',
@@ -897,7 +897,7 @@ Error generating stack: `+o.message+`
   function listingCardHtml(h, isCarousel) {
     // FIX D11: use listing image (with type-specific fallback) instead of just images[0]
     var img = listingImage(h, 0);
-    var widthStyle = isCarousel ? 'width:100%;' : '';
+    var widthStyle = isCarousel ? 'flex:0 0 280px;min-width:260px;max-width:300px;' : 'width:100%;';
     var cardStyle = widthStyle + 'background:#fff;border:1px solid #E8E2D9;border-radius:18px;overflow:hidden;cursor:pointer;transition:transform .2s,box-shadow .2s;' + (isCarousel ? 'scroll-snap-align:start;' : '');
     var html = '<div class="rhc-listing-card" data-rhc-listing-id="' + escapeHtml(h.id || '') + '" style="' + cardStyle + '" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.boxShadow=\'0 12px 32px rgba(0,0,0,.1)\'" onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">';
     html += '<div style="height:200px;background:#F5F1EB;overflow:hidden;position:relative">';
@@ -905,9 +905,9 @@ Error generating stack: `+o.message+`
     html += '<div style="position:absolute;top:10px;left:10px;background:#fff;padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml((h.type || 'House').toUpperCase()) + '</div>';
     html += '<div style="position:absolute;top:10px;right:10px;background:#1A1A18;color:#fff;padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">$' + ((h.price || 0).toLocaleString()) + '/mo</div>';
     html += '</div><div style="padding:14px">';
-    html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px">' + escapeHtml(h.address || 'Address') + '</div>';
+    html += '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(h.address || 'Address') + '</div>';
     html += '<div style="font-size:12px;color:#64748B;margin-bottom:8px">' + escapeHtml(h.city || '') + (h.state ? ', ' + escapeHtml(h.state) : '') + '</div>';
-    html += '<div style="display:flex;gap:10px;font-size:12px;color:#1A1A18"><span><strong>' + (h.beds || 0) + '</strong> bd</span><span><strong>' + (h.baths || 0) + '</strong> ba</span><span><strong>' + ((h.sqft || 0).toLocaleString()) + '</strong> sqft</span></div>';
+    html += '<div style="display:flex;gap:6px;font-size:12px;color:#1A1A18;white-space:nowrap"><span><strong>' + (h.beds || 0) + '</strong> bd</span><span style="color:#94A3B8">&bull;</span><span><strong>' + (h.baths || 0) + '</strong> ba</span><span style="color:#94A3B8">&bull;</span><span><strong>' + ((h.sqft || 0).toLocaleString()) + '</strong> sqft</span></div>';
     html += '</div></div>';
     return html;
   }
@@ -1114,7 +1114,7 @@ Error generating stack: `+o.message+`
         '<div style="padding:14px">' +
           '<div style="font-size:14px;font-weight:600;color:#1A1A18;margin-bottom:4px">' + escapeHtml(h.address||'') + '</div>' +
           '<div style="font-size:12px;color:#64748B;margin-bottom:8px">' + escapeHtml(h.city||'') + ', ' + escapeHtml(h.state||'') + '</div>' +
-          '<div style="display:flex;gap:10px;font-size:12px;color:#1A1A18"><span><strong>' + (h.beds||0) + '</strong> bd</span><span><strong>' + (h.baths||0) + '</strong> ba</span><span><strong>' + ((h.sqft||0).toLocaleString()) + '</strong> sqft</span></div>' +
+          '<div style="display:flex;gap:6px;font-size:12px;color:#1A1A18;white-space:nowrap"><span><strong>' + (h.beds||0) + '</strong> bd</span><span style="color:#94A3B8">&bull;</span><span><strong>' + (h.baths||0) + '</strong> ba</span><span style="color:#94A3B8">&bull;</span><span><strong>' + ((h.sqft||0).toLocaleString()) + '</strong> sqft</span></div>' +
         '</div>' +
       '</div>';
     });
