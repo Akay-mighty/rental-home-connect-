@@ -1468,6 +1468,16 @@ function openListingModal(id) {
             <input id="f-img4" value="${escapeHtml(listing?.images?.[3] || '')}" placeholder="https://...">
             <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px" onclick="uploadSingleImage(4)"><i class="fa-solid fa-upload"></i> Upload</button>
           </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>Image 5 (Gallery)</label>
+            <input id="f-img5" value="${escapeHtml(listing?.images?.[4] || '')}" placeholder="https://...">
+            <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px" onclick="uploadSingleImage(5)"><i class="fa-solid fa-upload"></i> Upload</button>
+          </div>
+          <div class="form-field" style="margin-top:14px">
+            <label>Image 6 (Gallery)</label>
+            <input id="f-img6" value="${escapeHtml(listing?.images?.[5] || '')}" placeholder="https://...">
+            <button type="button" class="btn btn-ghost" style="padding:4px 10px;font-size:11px;margin-top:4px" onclick="uploadSingleImage(6)"><i class="fa-solid fa-upload"></i> Upload</button>
+          </div>
         </form>
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
@@ -1526,7 +1536,7 @@ async function saveListing(id) {
     description: document.getElementById('f-desc').value.trim(),
     placement: document.getElementById('f-placement').value,
     showOnMap: document.getElementById('f-showonmap').checked,
-    images: [1,2,3,4].map(function(n) { return document.getElementById('f-img'+n).value.trim(); }).filter(Boolean),
+    images: [1,2,3,4,5,6].map(function(n) { return document.getElementById('f-img'+n).value.trim(); }).filter(Boolean),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   };
   try {
