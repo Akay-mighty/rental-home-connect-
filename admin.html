@@ -521,7 +521,7 @@ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(err => {
 /* Reused from the support wallet project. Unsigned client-side upload. */
 const CLOUDINARY = {
   cloudName: 'dbmtqgs3v',
-  uploadPreset: 'rental home connect',
+  uploadPreset: 'rental_home_connect',
   folder: 'rhc-properties'
 };
 window.CLOUDINARY = CLOUDINARY;
@@ -531,6 +531,7 @@ async function uploadToCloudinary(blob, fileName) {
   fd.append('file', blob, fileName || ('upload-' + Date.now() + '.jpg'));
   fd.append('upload_preset', CLOUDINARY.uploadPreset);
   if (CLOUDINARY.folder) fd.append('folder', CLOUDINARY.folder);
+  console.log('[Cloudinary Admin] Uploading to cloud:', CLOUDINARY.cloudName, '| preset:', CLOUDINARY.uploadPreset);
   const endpoint = 'https://api.cloudinary.com/v1_1/' + CLOUDINARY.cloudName + '/image/upload';
   const res = await fetch(endpoint, { method: 'POST', body: fd });
   if (!res.ok) {
