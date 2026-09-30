@@ -178,7 +178,7 @@ Now `kingfache@rental.com` can log into the admin dashboard at `rental-home-conn
 
 ## STEP 5: Cloudinary Setup (for image uploads)
 
-The code uses Cloudinary cloud name `dbmtqgs3v` and upload preset `rental home connect`.
+The code uses Cloudinary cloud name `dbmtqgs3v` and upload preset `rental_home_connect` (underscore, NOT space).
 
 ### Create the upload preset:
 1. Go to **https://cloudinary.com/console** and log in
@@ -187,12 +187,10 @@ The code uses Cloudinary cloud name `dbmtqgs3v` and upload preset `rental home c
 4. Scroll to **Upload presets** section
 5. Click **Add upload preset**
 6. Set:
-   - **Name**: `rental home connect`
+   - **Name**: `rental_home_connect` ← underscore, NOT space
    - **Signing Mode**: **Unsigned** ← this is critical
    - **Folder**: `rhc-properties` (optional)
 7. Click **Save**
-
-If the preset name has spaces, that's fine — the code handles it.
 
 ### Fallback (if Cloudinary doesn't work):
 The code automatically falls back to **Firebase Storage** if Cloudinary fails. To enable Firebase Storage:
@@ -221,7 +219,7 @@ The code automatically falls back to **Firebase Storage** if Cloudinary fails. T
 | Admin password | `fache123` |
 | Firebase project | `rental-home-connect` |
 | Cloudinary cloud name | `dbmtqgs3v` |
-| Cloudinary preset | `rental home connect` (unsigned) |
+| Cloudinary preset | `rental_home_connect` (underscore, unsigned) |
 | Contact email | `rentalhomeconnects@gmail.com` |
 | TikTok (main) | `@_rentalhomeconnects` |
 | TikTok agents | `@_christopherhayes`, `@_ethanhayes1` |
@@ -244,3 +242,9 @@ The code automatically falls back to **Firebase Storage** if Cloudinary fails. T
 
 **Admin login says "Access denied":**
 → The `users/{uid}` document in Firestore needs `isAdmin: true` (boolean, not string). Go back to Step 4.
+
+**White screen / blank page (TypeError: Cannot read properties of null):**
+→ A listing in Firestore has missing or null fields. Go to Firestore → Data → `listings` collection → check each document has `images`, `address`, `price`, `beds`, `baths`, `sqft` fields. Delete any empty/null documents. The code now has null guards but bad data should still be cleaned up.
+
+**Slideshow resets to 1 when swiping:**
+→ This was fixed in v20 — the slideshow now preserves its index across re-renders. If it still happens, hard-refresh (Ctrl+Shift+R) to clear cached JS.
