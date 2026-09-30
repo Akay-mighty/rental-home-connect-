@@ -328,7 +328,9 @@ Error generating stack: `+o.message+`
       '.rhc-msg.agent{background:#fff;color:#1A1A18;align-self:flex-start;border-bottom-left-radius:4px;border:1px solid #E8E2D9;}',
       '.rhc-msg.error{background:#FEE2E2;color:#EF4444;align-self:center;font-size:12px;text-align:center;}',
       '.rhc-msg .ts{font-size:10px;opacity:.7;margin-top:3px;}',
-      '.rhc-msg img{max-width:100%;width:auto;max-height:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;display:block;box-sizing:border-box;object-fit:contain;}',
+      '.rhc-msg img{max-width:100%;width:auto;max-height:220px;border-radius:10px;margin-top:6px;cursor:pointer;display:block;box-sizing:border-box;object-fit:contain;}',
+    '.rhc-chat-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer;animation:rhcFade .2s ease;}',
+    '.rhc-chat-lightbox img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5);}',
       '.rhc-typing{align-self:flex-start;background:#fff;border:1px solid #E8E2D9;padding:9px 13px;border-radius:14px;color:#64748B;font-size:13px;display:none;}',
       '.rhc-typing.show{display:block;}',
       '.rhc-typing .dots span{display:inline-block;width:5px;height:5px;background:#64748B;border-radius:50%;margin:0 1px;animation:rhcDot 1.4s infinite;}',
@@ -2829,7 +2831,14 @@ Error generating stack: `+o.message+`
   RHC.scrollToFooter = scrollToFooter;
 
   function showChatWidget() {
-    if (widget) return;
+    if (widget) {
+      // BUG 2: Restore chat open state on page load
+      if (localStorage.getItem('rhc_chat_open') === '1' && RHC.currentChatId) {
+        chatOpen = true;
+        widget.win.style.display = 'flex';
+      }
+      return;
+    }
     injectBaseStyles();
     var wrap = document.createElement('div');
     wrap.className = 'rhc-chat-fab-wrap';
@@ -2877,7 +2886,7 @@ Error generating stack: `+o.message+`
         setTimeout(function() { chatInput.focus(); chatMessages.scrollTop = chatMessages.scrollHeight; }, 60);
       }
     }
-    win.querySelector('.close').addEventListener('click', function() { chatOpen = false; win.style.display = 'none'; });
+    win.querySelector('.close').addEventListener('click', function() { chatOpen = false; win.style.display = 'none'; localStorage.setItem('rhc_chat_open', '0'); });
     win.querySelector('#rhc-send').addEventListener('click', function(e) { e.preventDefault(); sendVisitorMessage(); });
     chatInput.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendVisitorMessage(); }
@@ -3007,7 +3016,7 @@ Error generating stack: `+o.message+`
       }
       // Build a clickable thumbnail that opens the full image in a new tab
       html += '<br><a href="' + escapeHtml(full) + '" target="_blank" rel="noopener" style="display:block">' +
-              imgTag(full, 'Attachment', 'max-width:200px;border-radius:8px;margin-top:6px;cursor:zoom-in;display:block') +
+              '<img src="' + escapeHtml(full) + '" onclick="RHC.openChatLightbox(\'' + escapeHtml(full) + '\')" style="max-width:100%;width:auto;max-height:220px;border-radius:10px;margin-top:6px;cursor:pointer;display:block;object-fit:contain;box-sizing:border-box">' +
               '</a>';
     }
     var ts = m.timestamp ? new Date(m.timestamp.toMillis ? m.timestamp.toMillis() : Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
@@ -3059,6 +3068,23 @@ Error generating stack: `+o.message+`
       console.warn('RHC: chat metadata update failed (message was still sent)', e);
     }
   }
+
+  // BUG 1: In-app lightbox for chat images — no navigating away
+  RHC.openChatLightbox = function(imgUrl) {
+    // Remove existing lightbox
+    var existing = document.getElementById('rhc-chat-lightbox');
+    if (existing) existing.remove();
+    var lb = document.createElement('div');
+    lb.id = 'rhc-chat-lightbox';
+    lb.className = 'rhc-chat-lightbox';
+    lb.innerHTML = '<img src="' + escapeHtml(imgUrl) + '" onclick="event.stopPropagation()">';
+    // Close on click outside the image, or Escape key
+    lb.addEventListener('click', function() { lb.remove(); });
+    document.addEventListener('keydown', function escHandler(e) {
+      if (e.key === 'Escape') { lb.remove(); document.removeEventListener('keydown', escHandler); }
+    });
+    document.body.appendChild(lb);
+  };
 
   // ============ Cloudinary upload (with Firebase Storage fallback) ============
   async function uploadImage(file) {
@@ -3409,8 +3435,6 @@ Error generating stack: `+o.message+`
   }
 })();
 </script>
-
-
 
 </body>
 </html>

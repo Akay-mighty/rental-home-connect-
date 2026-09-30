@@ -497,6 +497,23 @@
    Reuses Cloudinary creds + chat pattern from the support wallet project.
    ===================================================================== */
 
+
+// BUG 1: In-app lightbox for admin chat images
+function openAdminChatLightbox(imgUrl) {
+  var existing = document.getElementById('rhc-admin-lightbox');
+  if (existing) existing.remove();
+  var lb = document.createElement('div');
+  lb.id = 'rhc-admin-lightbox';
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;cursor:pointer';
+  lb.innerHTML = '<img src="' + imgUrl + '" style="max-width:90vw;max-height:85vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)">';
+  lb.addEventListener('click', function() { lb.remove(); });
+  document.addEventListener('keydown', function escHandler(e) {
+    if (e.key === 'Escape') { lb.remove(); document.removeEventListener('keydown', escHandler); }
+  });
+  document.body.appendChild(lb);
+}
+window.openAdminChatLightbox = openAdminChatLightbox;
+
 /* ----------------------------- Firebase Config ----------------------------- */
 const firebaseConfig = {
   apiKey: "AIzaSyDTYjQ_wG7oaRd_gcMWliirn9z6yV24wtE",
@@ -1125,7 +1142,7 @@ function renderMessages() {
     let body = escapeHtml(m.text || '');
     if (m.attachmentUrl) {
       const full = cloudinaryThumb(m.attachmentUrl, { q: 'auto', f: 'auto' }) || m.attachmentUrl;
-      body += `<br><img src="${escapeHtml(full)}" onclick="window.open('${escapeHtml(full)}','_blank')" style="cursor:zoom-in">`;
+      body += `<br><img src="${escapeHtml(full)}" onclick="openAdminChatLightbox('${escapeHtml(full)}')" style="cursor:pointer;max-width:100%;width:auto;max-height:220px;border-radius:10px;object-fit:contain;display:block;box-sizing:border-box">`;
     }
     return `<div class="msg ${isAdmin ? 'admin' : 'customer'}">${body}<div class="ts">${ts}</div></div>`;
   }).join('');
