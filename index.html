@@ -990,7 +990,7 @@ Error generating stack: `+o.message+`
     html += '<h2 style="font-family:Cormorant Garamond,serif;font-size:32px;color:#1A1A18;font-weight:600;margin-bottom:4px">Rentals Across USA</h2>';
     html += '<span class="rhc-filter-count" id="rhc-filter-count" style="font-size:13px;color:#64748B"><span class="num">' + filtered.length + '</span> home' + (filtered.length === 1 ? '' : 's') + ' available</span>';
     html += '</div>';
-    html += '<p class="sub">Browse all available rentals. Browse all available rentals. Click to explore.</p>';
+    html += '<p class="sub">Browse all available rentals. Click to explore.</p>';
 
     syncFilterCount(filtered.length);
 
@@ -1110,7 +1110,7 @@ Error generating stack: `+o.message+`
     '</div>' +
     '<div class="rhc-detail-container">' +
       '<h1 style="font-family:Cormorant Garamond,serif;font-size:32px;color:#1A1A18;margin-bottom:4px">All Available Homes</h1>' +
-      '<p style="font-size:14px;color:#64748B;margin-bottom:24px">' + listings.length + ' rentals across the USA. Browse all available rentals. Click to explore.</p>' +
+      '<p style="font-size:14px;color:#64748B;margin-bottom:24px">' + listings.length + ' rentals across the USA. Click any home for full details.</p>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px">';
     listings.forEach(function(h) {
       var img = (h.images && h.images[0]) || '';
@@ -2179,7 +2179,7 @@ Error generating stack: `+o.message+`
   function openDetailPage(card) {
     var listingId = card.getAttribute('data-rhc-listing-id');
     var listing = null;
-    // BUG 1 FIX: Try cached rhcListings first (fast), but also fetch fresh from Firestore
+    // Try cached rhcListings first
     if (listingId && rhcListings.length > 0) {
       for (var i = 0; i < rhcListings.length; i++) {
         if (rhcListings[i].id === listingId) { listing = rhcListings[i]; break; }
@@ -2187,29 +2187,37 @@ Error generating stack: `+o.message+`
     }
     if (!listing) listing = extractListingData(card);
     RHC.currentListing = listing;
-    // BUG 1 FIX: Fetch the latest listing data from Firestore to ensure fresh images
+    // Update URL so refresh stays on this property
+    if (listingId) history.pushState(null, '', '#property/' + listingId);
+    // FIX 1: Fetch fresh listing data from Firestore BEFORE rendering gallery
+    // This ensures correct images on first load — no stale cache
     if (listingId && RHC.db) {
       RHC.db.collection('listings').doc(listingId).get().then(function(doc) {
         if (doc.exists) {
           var freshData = Object.assign({ id: doc.id }, doc.data());
-          // Update the cached rhcListings array
+          // Update cached rhcListings
           for (var i = 0; i < rhcListings.length; i++) {
             if (rhcListings[i].id === listingId) { rhcListings[i] = freshData; break; }
           }
-          // If the detail page is open, update its images
-          if (RHC.currentListing && RHC.currentListing.id === listingId) {
-            RHC.currentListing = freshData;
-            var galleryMain = document.querySelector('.rhc-detail-gallery-main img');
-            if (galleryMain && freshData.images && freshData.images[0]) {
-              galleryMain.src = freshData.images[0];
-            }
-            // Update thumbnails
-            var thumbs = document.querySelectorAll('.rhc-detail-gallery-thumb img');
-            (freshData.images || []).forEach(function(imgUrl, idx) {
-              if (idx > 0 && idx < 6 && thumbs[idx - 1]) {
-                thumbs[idx - 1].src = imgUrl;
-              }
-            });
+          RHC.currentListing = freshData;
+          // Re-render the gallery with correct images
+          var galleryContainer = document.querySelector('.rhc-detail-gallery');
+          if (galleryContainer) {
+            galleryContainer.outerHTML = buildGalleryHtml(freshData);
+          }
+          // Update similar homes with fresh data
+          var similarContainer = document.querySelector('.rhc-similar');
+          if (similarContainer) {
+            var similar = findSimilarHomes(freshData);
+            var similarHtml = similar.length > 0 ? similar.map(function(h) {
+              return '<div class="rhc-similar-card" onclick="RHC.openDetailById(\'' + escapeHtml(h.id) + '\')">' +
+                imgTag(h.img, (h.address || 'Rental home'), 'width:100%;height:140px;object-fit:cover') +
+                '<div class="info"><div class="price">$' + (h.price || 0).toLocaleString() + '/mo</div>' +
+                '<div class="addr">' + escapeHtml(h.address || '') + '</div>' +
+                '<div class="specs">' + (h.beds || 0) + ' bd - ' + (h.baths || 0) + ' ba - ' + (h.sqft || 0).toLocaleString() + ' sqft</div>' +
+                '</div></div>';
+            }).join('') : '<p style="color:#64748B;font-size:14px">No similar homes found.</p>';
+            similarContainer.innerHTML = similarHtml;
           }
         }
       }).catch(function(e) { console.warn('RHC: fresh fetch failed, using cached', e); });
@@ -3348,6 +3356,34 @@ Error generating stack: `+o.message+`
     var hash = window.location.hash;
     if (!hash || hash === '#') return;
     setTimeout(function() {
+      // Property detail page routing: #property/[id]
+      if (hash.indexOf('#property/') === 0) {
+        var propId = hash.replace('#property/', '');
+        if (propId && rhcListings.length > 0) {
+          var listing = null;
+          for (var i = 0; i < rhcListings.length; i++) {
+            if (rhcListings[i].id === propId) { listing = rhcListings[i]; break; }
+          }
+          if (listing) {
+            var fakeCard = { getAttribute: function() { return propId; }, querySelector: function() { return null; }, textContent: '' };
+            openDetailPage(fakeCard);
+          } else {
+            // Listing not in cache — fetch from Firestore
+            if (RHC.db) {
+              RHC.db.collection('listings').doc(propId).get().then(function(doc) {
+                if (doc.exists) {
+                  var freshData = Object.assign({ id: doc.id }, doc.data());
+                  rhcListings.push(freshData);
+                  RHC.currentListing = freshData;
+                  var fakeCard2 = { getAttribute: function() { return propId; }, querySelector: function() { return null; }, textContent: '' };
+                  openDetailPage(fakeCard2);
+                }
+              }).catch(function(e) { console.warn('RHC: property route fetch failed', e); });
+            }
+          }
+        }
+        return;
+      }
       if (hash === '#rent' || hash === '#/') {
         var l = document.getElementById('listings'); if (l) l.scrollIntoView({ behavior: 'smooth' });
       } else if (hash === '#mortgage') {
@@ -3362,7 +3398,7 @@ Error generating stack: `+o.message+`
       } else if (hash === '#manage') {
         window.open('admin.html', '_blank');
       }
-    }, 500); // delay so React has mounted
+    }, 800); // delay so React has mounted + Firestore loaded
   }
   window.addEventListener('hashchange', handleHashRoute);
 
@@ -3373,6 +3409,8 @@ Error generating stack: `+o.message+`
   }
 })();
 </script>
+
+
 
 </body>
 </html>
